@@ -2,16 +2,129 @@ import {
   buildCategoryStats,
   buildClusterStats,
   buildDashboardMetrics,
+  buildOpsHealth,
 } from './stats-service.js';
 import { escapeHtml, formatDecimal, formatNumber, formatUtc, hostFromUrl } from './view-utils.js';
 
-function metricCard(label, value, note = '') {
-  return `<div class="card metric-card">
+function metricCard(label, value, note = '', tone = '') {
+  return `<div class="card metric-card ${tone ? `metric-card-${escapeHtml(tone)}` : ''}">
     <div>
       <div class="metric">${escapeHtml(value)}</div>
       <div class="label">${escapeHtml(label)}</div>
     </div>
     ${note ? `<p class="metric-note">${escapeHtml(note)}</p>` : ''}
+  </div>`;
+}
+
+function severityClass(value) {
+  if (value === 'ok') return 'ok';
+  if (value === 'warning') return 'warn';
+  return 'danger';
+}
+
+function renderOpsSummary({ ops, metrics }) {
+  const impactPending = Number(ops.queues?.impact?.totals?.pending || 0);
+  const impactRunning = Number(ops.queues?.impact?.totals?.running || 0);
+  const briefingPending = Number(ops.queues?.briefing?.pending || 0);
+  const activeCooldowns = Number(ops.providers?.activeCooldowns?.length || 0);
+  const mattermostFailed = (ops.mattermost || [])
+    .filter((row) => row.status === 'failed')
+    .reduce((total, row) => total + Number(row.notifications || 0), 0);
+  const status = ops.status || 'unknown';
+  const statusLabel = status === 'ok' ? 'Nominal' : status === 'warning' ? 'Atención' : 'Degradado';
+
+  return `<section class="ops-hero card">
+    <div class="ops-hero-main">
+      <div class="ops-eyebrow">
+        <span class="live-dot ${escapeHtml(severityClass(status))}"></span>
+        <span>Estado operativo</span>
+      </div>
+      <h1>SignalRSS está ${escapeHtml(statusLabel.toLowerCase())}.</h1>
+      <p class="lede">Foto de la base al refrescar. Impact, briefings, proveedores y Mattermost quedan resumidos para decidir rápido dónde intervenir.</p>
+      <div class="toolbar">
+        <a class="pill primary" href="/">Refresh</a>
+        <a class="pill" href="/api/ops/health">Ops JSON</a>
+        <a class="pill" href="/news">News triage</a>
+        <a class="pill" href="/impact">Impact</a>
+      </div>
+    </div>
+    <div class="ops-scorecard">
+      <div class="ops-status ${escapeHtml(severityClass(status))}">${escapeHtml(statusLabel)}</div>
+      <div class="ops-kpis">
+        <div><strong>${formatNumber(impactPending)}</strong><span>impact pendientes</span></div>
+        <div><strong>${formatNumber(impactRunning)}</strong><span>impact corriendo</span></div>
+        <div><strong>${formatNumber(briefingPending)}</strong><span>briefs pendientes</span></div>
+        <div><strong>${formatNumber(activeCooldowns)}</strong><span>cooldowns LLM</span></div>
+      </div>
+      <p>${formatNumber(metrics.feeds.successful_feeds_24h)} de ${formatNumber(metrics.feeds.enabled_feeds)} feeds respondieron en 24h. ${mattermostFailed ? `${formatNumber(mattermostFailed)} publicaciones Mattermost fallidas recientes.` : 'Mattermost sin fallos recientes críticos.'}</p>
+    </div>
+  </section>`;
+}
+
+function renderBacklogSpotlight(rows = []) {
+  const pending = rows
+    .filter((row) => Number(row.impact_pending || 0) > 0 || Number(row.briefing_pending || 0) > 0)
+    .sort((left, right) => (
+      (Number(right.impact_pending || 0) + Number(right.briefing_pending || 0))
+      - (Number(left.impact_pending || 0) + Number(left.briefing_pending || 0))
+    ))
+    .slice(0, 5);
+
+  if (!pending.length) {
+    return `<div class="spotlight-empty">
+      <strong>Sin backlog activo</strong>
+      <span>Todas las categorías están al día.</span>
+    </div>`;
+  }
+
+  const max = Math.max(...pending.map((row) => Number(row.impact_pending || 0) + Number(row.briefing_pending || 0)), 1);
+  return `<div class="spotlight-list">
+    ${pending.map((row) => {
+      const impact = Number(row.impact_pending || 0);
+      const briefing = Number(row.briefing_pending || 0);
+      const total = impact + briefing;
+      return `<div class="spotlight-row">
+        <div>
+          <strong>${escapeHtml(row.category)}</strong>
+          <span>${formatNumber(row.clusters)} clusters · ${formatNumber(impact)} impact · ${formatNumber(briefing)} briefs</span>
+        </div>
+        <div class="spotlight-meter" aria-label="${escapeHtml(row.category)} backlog">
+          <span style="width:${Math.max(6, Math.round((total / max) * 100))}%"></span>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderProviderPulse(ops = {}) {
+  const rows = (ops.providers?.lastHour || []).slice(0, 8);
+  if (!rows.length) return '<p>No hay requests LLM en la última hora.</p>';
+
+  return `<div class="provider-pulse">
+    ${rows.map((row) => {
+      const failed = Number(row.failed || 0);
+      const ok = Number(row.ok || 0);
+      const tone = failed > ok ? 'danger' : failed > 0 ? 'warn' : 'ok';
+      return `<div class="provider-chip ${tone}">
+        <strong>${escapeHtml(row.provider)}</strong>
+        <span>${escapeHtml(row.operation.replace('_', ' '))}</span>
+        <em>${formatNumber(ok)} ok / ${formatNumber(failed)} fail</em>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderMattermostPulse(rows = []) {
+  const failed = rows.filter((row) => row.status === 'failed');
+  if (!failed.length) return '<p class="ok">Sin fallos Mattermost recientes.</p>';
+  return `<div class="status-list compact">
+    ${failed.slice(0, 4).map((row) => `<div class="status-row">
+      <div>
+        <strong>${escapeHtml(row.error || 'Mattermost failed')}</strong>
+        <span>${escapeHtml(formatUtc(row.last_updated_at))}</span>
+      </div>
+      <div class="danger">${formatNumber(row.notifications)}</div>
+    </div>`).join('')}
   </div>`;
 }
 
@@ -211,10 +324,11 @@ function renderTopFeeds(rows) {
 }
 
 export async function renderDashboardPage({ renderLayout }) {
-  const [clusters, categories, metrics] = await Promise.all([
+  const [clusters, categories, metrics, ops] = await Promise.all([
     buildClusterStats(),
     buildCategoryStats(),
     buildDashboardMetrics(),
+    buildOpsHealth(),
   ]);
   const articleMetrics = metrics.articles;
   const feedMetrics = metrics.feeds;
@@ -224,28 +338,42 @@ export async function renderDashboardPage({ renderLayout }) {
   ));
 
   const body = `
-    <div class="dashboard-hero">
-      <section>
-        <h1>SignalRSS operations.</h1>
-        <p class="lede">Estado calculado al cargar esta página. Refrescá el navegador para obtener una nueva foto de la base; no hay polling desde la UI.</p>
-        <div class="toolbar">
-          <a class="pill" href="/">Refresh</a>
-          <a class="pill" href="/impact">Impact</a>
-          <a class="pill" href="/cloud-infrastructure/p0">Cloud P0</a>
-          <a class="pill" href="/p0">AI P0</a>
+    ${renderOpsSummary({ ops, metrics })}
+    <div class="command-grid">
+      <section class="card command-card">
+        <div class="section-head">
+          <div>
+            <div class="label">Prioridad ahora</div>
+            <h2>Backlog activo</h2>
+          </div>
+          <a class="pill" href="/api/ops/health">Ver detalle</a>
         </div>
+        ${renderBacklogSpotlight(metrics.backlog)}
       </section>
-      <section class="card status-panel">
-        <div class="label">Última lectura</div>
-        <div class="metric">${escapeHtml(formatUtc(metrics.refreshedAt))}</div>
-        <p>${formatNumber(feedMetrics.successful_feeds_24h)} de ${formatNumber(feedMetrics.enabled_feeds)} feeds respondieron en las últimas 24h.</p>
+      <section class="card command-card">
+        <div class="section-head">
+          <div>
+            <div class="label">Riesgo de proveedor</div>
+            <h2>LLM última hora</h2>
+          </div>
+        </div>
+        ${renderProviderPulse(ops)}
+      </section>
+      <section class="card command-card">
+        <div class="section-head">
+          <div>
+            <div class="label">Publicación</div>
+            <h2>Mattermost</h2>
+          </div>
+        </div>
+        ${renderMattermostPulse(ops.mattermost)}
       </section>
     </div>
     <div class="grid">
-      ${metricCard('Noticias ingresadas 24h', formatNumber(articleMetrics.articles_ingested_24h), `${formatDecimal(feedMetrics.avg_articles_ingested_per_hour)} por hora promedio`)}
+      ${metricCard('Noticias ingresadas 24h', formatNumber(articleMetrics.articles_ingested_24h), `${formatDecimal(feedMetrics.avg_articles_ingested_per_hour)} por hora promedio`, 'fresh')}
       ${metricCard('Noticias publicadas 24h', formatNumber(articleMetrics.articles_published_24h), 'Según published_at de cada fuente')}
       ${metricCard('Feeds con novedades 24h', formatNumber(feedMetrics.feeds_with_new_articles_24h), `${formatNumber(feedMetrics.enabled_feeds)} feeds habilitados`)}
-      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impactos pendientes`)}
+      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impactos pendientes`, backlog.briefingPending || backlog.impactPending ? 'warn' : 'fresh')}
       ${metricCard('Artículos 7 días', formatNumber(articleMetrics.articles_ingested_7d), `${formatNumber(articleMetrics.articles_published_7d)} publicados en ventana`)}
       ${metricCard('Clusters 7 días', formatNumber(clusters.clusters_last_7_days), `${formatNumber(clusters.clustered_article_links)} links clusterizados`)}
       ${metricCard('Categorías completas', `${formatNumber(backlog.completedCategories)}/${formatNumber(metrics.backlog.length)}`, 'Sin impacto ni briefings pendientes')}
