@@ -53,7 +53,8 @@
     "maintenance:deduplicate-articles": "node src/deduplicate-articles.js",
     "maintenance:cleanup-low-confidence": "node src/cleanup-low-confidence-classifications.js",
     "maintenance:reclassify-cloud-candidates": "node src/reclassify-cloud-candidates.js cloud-infrastructure",
-    "maintenance:reclassify-category-candidates": "node src/reclassify-cloud-candidates.js"
+    "maintenance:reclassify-category-candidates": "node src/reclassify-cloud-candidates.js",
+    "maintenance:backfill-evidence-quality": "node src/backfill-evidence-quality.js"
   },
   "dependencies": {
     "@langfuse/openai": "^5.3.0",

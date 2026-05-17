@@ -105,6 +105,7 @@ export async function buildDashboardMetrics() {
         SELECT sc.id, sc.category_id, sc.updated_at
         FROM story_clusters sc
         WHERE sc.latest_published_at >= NOW() - INTERVAL '7 days'
+          AND ($1::timestamptz IS NULL OR sc.latest_published_at >= $1::timestamptz)
           AND EXISTS (
             SELECT 1
             FROM cluster_articles ca
@@ -136,7 +137,7 @@ export async function buildDashboardMetrics() {
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
       GROUP BY tc.slug
       ORDER BY briefing_pending DESC, impact_pending DESC, tc.slug
-    `),
+    `, [config.impactMinPublishedAt || config.briefingMinPublishedAt || null]),
     pool.query(`
       SELECT
         tc.slug AS category,
@@ -154,6 +155,7 @@ export async function buildDashboardMetrics() {
         AND cb.locale = 'es'
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
       WHERE sc.latest_published_at >= NOW() - INTERVAL '7 days'
+        AND ($1::timestamptz IS NULL OR sc.latest_published_at >= $1::timestamptz)
         AND EXISTS (
           SELECT 1
           FROM cluster_articles ca
@@ -166,7 +168,7 @@ export async function buildDashboardMetrics() {
            OR cb.updated_at < cis.updated_at
       ) > 0
       ORDER BY briefing_pending DESC, tc.slug, cis.impact_level
-    `),
+    `, [config.briefingMinPublishedAt || null]),
     pool.query(`
       WITH configured_categories AS (
         SELECT unnest($1::text[]) AS category

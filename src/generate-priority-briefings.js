@@ -12,6 +12,12 @@ import {
   reserveLlmProviderSlot,
 } from './llm-cooldowns.js';
 import { maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
+import {
+  assessEvidenceQuality,
+  evidenceTextForCluster,
+  safeBriefingFallback,
+  unsupportedStrongClaims,
+} from './evidence-quality.js';
 import { logLlmRequest } from './llm-request-log.js';
 import { parseJsonObject, responseText, usageFromChatCompletion, usageFromOpenAIResponse } from './llm-utils.js';
 import { priorityBriefingSettings } from './priority-config.js';
@@ -274,12 +280,16 @@ function briefingLinks(cluster) {
 }
 
 function clusterInput(cluster) {
+  const evidenceQuality = assessEvidenceQuality(cluster);
   return {
     cluster_id: cluster.id,
     original_title: cleanText(cluster.title).slice(0, 260),
     impact_level: cluster.impact_level,
     impact_score: Number(cluster.impact_score || 0),
     impact_category: cluster.impact_category,
+    evidence_confidence: cluster.evidence_confidence || evidenceQuality.evidenceConfidence,
+    evidence_quality_score: Number(cluster.evidence_quality_score ?? evidenceQuality.evidenceQualityScore),
+    evidence_reasons: Array.isArray(cluster.evidence_reasons) ? cluster.evidence_reasons : evidenceQuality.evidenceReasons,
     impact_summary: cleanText(cluster.impact_summary).slice(0, 900),
     why_it_matters: cleanText(cluster.why_it_matters).slice(0, 1000),
     impact_reasons: Array.isArray(cluster.impact_reasons) ? cluster.impact_reasons : [],
@@ -341,7 +351,10 @@ function briefingMessages(settings, category, clusters) {
         `You write executive news briefings for ${settings.level} ${category} technology news clusters.`,
         `Write the briefing title and summary in ${config.briefingOutputLanguage}.`,
         'Synthesize the whole cluster as one story. Do not summarize article-by-article.',
-        'Use only the provided evidence. Do not invent facts, numbers, dates, causality, or named actors.',
+        'Use article titles and summaries as the factual source of truth. Treat impact_summary and why_it_matters as scoring context, not as confirmed facts if article evidence is weak.',
+        'Use only the provided evidence. Do not invent facts, numbers, dates, causality, named actors, user counts, shutdowns, breaches, bans, or global impact.',
+        'If evidence_confidence is low or evidence_reasons mention metadata-only/thin evidence, write cautiously and explicitly avoid strong claims that are not present in the article evidence.',
+        'For ambiguous titles, describe the ambiguity instead of turning the title into a confirmed real-world event.',
         'Explain what happened, why it matters, and the practical consequence for an executive technology reader.',
         'Do not include links in the title or summary; links are appended by the application.',
         'Return only compact valid JSON with this shape: {"results":[{"cluster_id":"...","title_es":"...","summary_es":"..."}]}.',
@@ -599,6 +612,9 @@ async function loadCandidateClusters(settings) {
         cis.impact_level,
         cis.impact_score,
         cis.impact_category,
+        cis.evidence_confidence,
+        cis.evidence_quality_score,
+        cis.evidence_reasons,
         cis.summary AS impact_summary,
         cis.why_it_matters,
         cis.impact_reasons,
@@ -809,7 +825,27 @@ async function saveBriefings(settings, clusters, briefings) {
     if (!cluster) continue;
 
     const links = sanitizeJsonValue(briefingLinks(cluster));
-    const storyHash = storyHashFromParts({ links, title: briefing.title_es || cluster.title });
+    const unsupportedClaims = unsupportedStrongClaims(
+      `${briefing.title_es || ''} ${briefing.summary_es || ''}`,
+      evidenceTextForCluster({
+        ...cluster,
+        impact_summary: '',
+        why_it_matters: '',
+      }),
+    );
+    const validatedBriefing = unsupportedClaims.length > 0
+      ? safeBriefingFallback(cluster, unsupportedClaims)
+      : {
+        title: cleanText(briefing.title_es).slice(0, 300),
+        summary: cleanText(briefing.summary_es).slice(0, 1800),
+      };
+    if (unsupportedClaims.length > 0) {
+      console.warn(
+        `Replaced unsupported ${settings.level} briefing claims cluster=${cluster.id} ` +
+        `claims=${unsupportedClaims.join(',')}`,
+      );
+    }
+    const storyHash = storyHashFromParts({ links, title: validatedBriefing.title || cluster.title });
     const payload = {
       cluster_id: cluster.id,
       locale: settings.locale,
@@ -817,8 +853,10 @@ async function saveBriefings(settings, clusters, briefings) {
       impact_level: cluster.impact_level,
       impact_score: cluster.impact_score,
       impact_category: cluster.impact_category,
-      title: cleanText(briefing.title_es).slice(0, 300),
-      summary: cleanText(briefing.summary_es).slice(0, 1800),
+      evidence_confidence: cluster.evidence_confidence,
+      evidence_quality_score: cluster.evidence_quality_score,
+      title: validatedBriefing.title,
+      summary: validatedBriefing.summary,
       links,
       story_hash: storyHash,
       generated_at: new Date().toISOString(),

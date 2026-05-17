@@ -75,6 +75,7 @@ export async function markExistingBriefingsSkipped({ destination, levels }) {
     JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
     WHERE cb.locale = 'es'
       AND cis.impact_level = ANY($1::text[])
+      AND NOT (cis.impact_level = 'P0' AND cis.evidence_confidence = 'low')
       AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
       AND tc.slug = $4
       AND sc.latest_published_at >= NOW() - ($3::int * INTERVAL '1 hour')
@@ -102,13 +103,16 @@ export async function loadPendingBriefings({ destination, levels }) {
         tc.slug AS category_slug,
         cis.impact_level,
         cis.impact_score,
-        cis.impact_category
+        cis.impact_category,
+        cis.evidence_confidence,
+        cis.evidence_quality_score
       FROM cluster_briefings cb
       JOIN story_clusters sc ON sc.id = cb.cluster_id
       JOIN topic_categories tc ON tc.id = sc.category_id
       JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
       WHERE cb.locale = 'es'
         AND cis.impact_level = ANY($1::text[])
+        AND NOT (cis.impact_level = 'P0' AND cis.evidence_confidence = 'low')
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
         AND tc.slug = $5
         AND sc.latest_published_at >= NOW() - ($2::int * INTERVAL '1 hour')

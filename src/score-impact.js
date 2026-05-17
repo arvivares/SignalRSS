@@ -20,6 +20,7 @@ import {
 } from './llm-utils.js';
 import { cleanText, hashInput, hostFromUrl } from './text-utils.js';
 import { isBriefingExcluded } from './briefing-exclusions.js';
+import { capImpactForEvidence } from './evidence-quality.js';
 import {
   observeOpenAIClient,
   shutdownLangfuseTracing,
@@ -288,6 +289,19 @@ function calibrateScore(cluster, score) {
     ];
   }
 
+  const evidenceCapped = capImpactForEvidence(cluster, {
+    impactScore,
+    impactCategory,
+    summary,
+    whyItMatters,
+    reasons,
+  });
+  impactScore = normalizeScore(evidenceCapped.impactScore);
+  impactCategory = normalizeCategory(evidenceCapped.impactCategory);
+  summary = evidenceCapped.summary;
+  whyItMatters = evidenceCapped.whyItMatters;
+  reasons = evidenceCapped.reasons;
+
   return {
     impactScore,
     impactLevel: levelForScore(impactScore),
@@ -295,6 +309,9 @@ function calibrateScore(cluster, score) {
     summary,
     whyItMatters,
     reasons,
+    evidenceConfidence: evidenceCapped.evidenceConfidence,
+    evidenceQualityScore: evidenceCapped.evidenceQualityScore,
+    evidenceReasons: evidenceCapped.evidenceReasons,
   };
 }
 
@@ -450,6 +467,8 @@ function impactMessages(category, inputs) {
         'Use this JSON shape: {"results":[{"cluster_id":"...","impact_level":"P0|P1|P2|P3","impact_score":0-100,"impact_category":"breakthrough|business|infrastructure|product|policy|security-risk|developer-impact|societal-impact|research|market|noise","summary":"...","why_it_matters":"...","impact_reasons":["..."]}]}',
         'Score first, then assign the level strictly from score: P0=85-100, P1=65-84, P2=40-64, P3=0-39.',
         'P0 means must read today because it can change decisions, risk, markets, products, platforms, operations, or regulation. P1 means important to monitor today. P2 means useful but not urgent. P3 means low impact/noise/tangential.',
+        'Evidence gate: P0 requires concrete evidence in article titles/summaries and either independent corroboration or a clearly authoritative source. Never infer a global event from an ambiguous title alone.',
+        'If the evidence is thin, metadata-only, a Hacker News wrapper, or lacks a substantive article summary, down-rank it. Do not invent shutdowns, breaches, bans, market impact, user counts, dates, causality, or named actors not explicitly supported by the evidence.',
         'Do not reward duplicate articles alone. Multi-source coverage matters only when sources add independent evidence.',
         'Down-rank routine releases, minor local items, generic commentary, promotional content, rumors, tutorials, reviews, and price-only market stories unless the evidence shows broad consequence.',
       ].join('\n'),
@@ -947,6 +966,15 @@ async function enqueueImpactJobs() {
     categoryFilter = `AND tc.slug = $${params.length}`;
   }
 
+  if (config.impactMinPublishedAt) {
+    await pool.query(`
+      DELETE FROM cluster_impact_jobs j
+      USING story_clusters sc
+      WHERE sc.id = j.cluster_id
+        AND sc.latest_published_at < $1::timestamptz
+    `, [config.impactMinPublishedAt]);
+  }
+
   try {
     await pool.query(`
       INSERT INTO cluster_impact_jobs (cluster_id, status)
@@ -1379,12 +1407,15 @@ async function saveScores(clusters, scores) {
          summary,
          why_it_matters,
          impact_reasons,
+         evidence_confidence,
+         evidence_quality_score,
+         evidence_reasons,
          model,
          input_hash,
          scored_at,
          updated_at
        )
-       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW(), NOW()
+       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb, $11, $12, NOW(), NOW()
        WHERE EXISTS (
          SELECT 1
          FROM story_clusters
@@ -1397,6 +1428,9 @@ async function saveScores(clusters, scores) {
          summary = EXCLUDED.summary,
          why_it_matters = EXCLUDED.why_it_matters,
          impact_reasons = EXCLUDED.impact_reasons,
+         evidence_confidence = EXCLUDED.evidence_confidence,
+         evidence_quality_score = EXCLUDED.evidence_quality_score,
+         evidence_reasons = EXCLUDED.evidence_reasons,
          model = EXCLUDED.model,
          input_hash = EXCLUDED.input_hash,
          scored_at = NOW(),
@@ -1409,6 +1443,9 @@ async function saveScores(clusters, scores) {
         calibrated.summary.slice(0, 700),
         calibrated.whyItMatters.slice(0, 900),
         JSON.stringify(calibrated.reasons),
+        calibrated.evidenceConfidence,
+        calibrated.evidenceQualityScore,
+        JSON.stringify(calibrated.evidenceReasons),
         score.model || config.impactModel,
         cluster.computed_input_hash,
       ],
