@@ -1,87 +1,178 @@
 # SignalRSS Architecture
 
-SignalRSS ingests technology RSS feeds, stores normalized article data, and republishes a unified RSS channel.
+SignalRSS is a Docker-first news intelligence pipeline. It ingests curated technology RSS feeds, stores canonical articles, classifies them into persistent categories, clusters related stories, scores their impact, generates Spanish briefs, and publishes selected stories through RSS, the web UI, and Mattermost.
 
-## Runtime Services
+## Runtime services
 
 | Service | Responsibility |
 | --- | --- |
-| `postgres` | PostgreSQL 18.3 source of truth for feeds, articles, fetch history, and state. |
-| `migrator` | Applies SQL migrations before API and worker start. |
-| `seeder` | Loads the curated final feed list from `data/feeds.csv` into PostgreSQL. |
-| `category-seeder` | Loads the technology category taxonomy from `data/topic-categories.json`. |
-| `backfill` | One-shot job that imports all available articles from the last 7 days. |
-| `classifier` | One-shot job that embeds recent articles and persists topic classifications. |
-| `classifier-worker` | Continuously classifies new articles and reports embedding usage to Langfuse. |
-| `clusterer` | One-shot job that groups classified articles into semantic story clusters. |
-| `cluster-worker` | Continuously clusters newly classified articles. |
-| `api` | Exposes `/health`, `/ready`, `/feeds/stats`, `/categories/stats`, and `/rss.xml`. |
-| `worker` | Polls enabled feeds continuously, records fetch runs, and stores new articles. |
+| `postgres` | PostgreSQL 18 through `pgvector/pgvector:pg18`; stores feeds, articles, embeddings, clusters, jobs, briefings, Mattermost state, and swipe decisions. |
+| `migrator` | Applies `db/migrations/*.sql` before application services start. |
+| `seeder` | Loads the curated feed list from `data/feeds.csv`. |
+| `category-seeder` | Loads the category taxonomy from `data/topic-categories.json`. |
+| `api` | Serves the dashboard, RSS feeds, JSON APIs, cluster pages, briefing pages, and `/news`. |
+| `worker` | Polls enabled RSS feeds and stores new canonical articles. |
+| `classifier-worker` | Embeds new articles and persists category assignments. |
+| `category-cluster-worker` | Groups classified articles into semantic story clusters by category. |
+| `category-impact-worker-*` | Scores clusters as `P0`, `P1`, `P2`, or `P3` using configured LLM fallbacks. |
+| `category-adjudication-worker` | Detects and merges duplicate clusters inside each category and priority level. |
+| `cross-category-adjudication-worker` | Detects duplicate stories across categories and applies merge precedence rules. |
+| `cluster-merge-worker` | Applies approved cluster merges. |
+| `category-briefing-worker` | Generates localized briefs for scored clusters. |
+| `mattermost-worker` | Publishes configured priority briefs to Mattermost with deduplication and thumbnail handling. |
 
-## Data Model
+One-shot services such as `backfill`, `classifier`, `clusterer`, `impact-scorer`, and `p0` to `p3` briefing/adjudication jobs exist for maintenance and controlled reprocessing. The nominal runtime uses the continuous workers.
 
-`feeds` stores source metadata, status, retry state, `etag`, and `last_modified`.
+## Data model
 
-`articles` stores canonical articles. It supports deduplication through `guid`, `canonical_url`, and `content_hash`.
+`feeds` stores source metadata, country, timezone, validation status, retry state, `etag`, and `last_modified`.
 
-`feed_entries` maps a source feed to a canonical article. This allows the same story to appear in multiple feeds without duplicating the article.
+`articles` stores canonical article data. Deduplication is based on source identity, canonical URL, GUID, and content hash.
 
-`fetch_runs` records every polling attempt for observability and debugging.
+`feed_entries` maps source feed entries to canonical articles, allowing multiple feeds to reference the same story without duplicating the article.
 
-`topic_categories` stores the persistent technology taxonomy and each category embedding.
+`fetch_runs` records polling attempts and failures for feed observability.
 
-`article_embeddings` stores article vectors for the active embedding model.
+`topic_categories` stores the technology category taxonomy and category embeddings.
 
-`article_classifications` stores ranked category assignments per article, including confidence, method, and model.
+`article_embeddings` stores article vectors for the active embedding model. pgvector indexes support similarity search.
 
-`classification_runs` records classifier executions for observability and debugging.
+`article_classifications` stores ranked category assignments, confidence, margin, model, and method.
 
-Langfuse traces OpenAI embedding calls from the classifier. This provides per-run token and cost visibility for category classification.
+`article_classification_rejections` records articles rejected from category assignment and why.
 
-`story_clusters` stores semantic story groups built from article embeddings.
+`story_clusters` stores semantic story groups, priority level, centroid vectors, cluster state, and category ownership.
 
-`cluster_articles` maps articles to story clusters and records assignment similarity.
+`cluster_articles` maps articles to clusters and stores assignment similarity.
 
-`clustering_runs` records semantic clustering executions.
+`cluster_impact_scores` stores `P0` to `P3` impact decisions and supporting rationale.
 
-## Docker Flow
+`cluster_impact_jobs` tracks scoring jobs, attempts, stale claims, retries, and failures.
 
-1. `postgres` starts and passes healthcheck.
-2. `migrator` applies `db/migrations/*.sql`.
-3. `seeder` upserts the final curated feeds from `data/feeds.csv`.
-4. `category-seeder` upserts topic categories from `data/topic-categories.json`.
-5. `backfill` can be run on demand to import all available items from the last `INGEST_WINDOW_DAYS`.
-6. `classifier` can be run on demand to classify recent articles with embeddings.
-7. `classifier-worker` runs continuously and classifies articles that are missing topic assignments.
-8. `cluster-worker` runs continuously and groups classified articles into semantic stories.
-9. `api` starts and serves the consolidated feed.
-10. `worker` polls feeds repeatedly based on `WORKER_POLL_INTERVAL_SECONDS`.
+`cluster_briefings` stores localized title, summary, links, story hash, and versioned briefing output.
 
-PostgreSQL 18 mounts the persistent volume at `/var/lib/postgresql` so the official image can manage major-version-specific data directories.
+`mattermost_notifications` and related notification tables track posting state, idempotency, snapshots, failures, and global story deduplication.
 
-## Version Policy
+`llm_request_logs` stores provider/model outcomes for cost, reliability, and fallback analysis.
 
-Use the latest stable service and library versions verified before each upgrade. Database major versions should be updated intentionally because PostgreSQL data directories are tied to the major version.
+`llm_provider_cooldowns` stores provider cooldowns so workers can avoid repeatedly hitting known rate limits or failing models.
 
-## Local Commands
+`news_swipes` stores `/news` left/right decisions by cluster and priority level.
+
+## Processing flow
+
+1. `postgres` starts and passes its healthcheck.
+2. `migrator` applies database migrations.
+3. `seeder` and `category-seeder` upsert feeds and categories.
+4. `backfill` can import the last `INGEST_WINDOW_DAYS` on demand.
+5. `worker` polls feeds continuously and writes new articles.
+6. `classifier-worker` embeds and classifies unclassified articles.
+7. `category-cluster-worker` assigns classified articles to story clusters.
+8. `category-impact-worker-*` creates or resumes impact jobs and scores clusters.
+9. `category-adjudication-worker` validates duplicate clusters within categories and priorities.
+10. `cross-category-adjudication-worker` validates duplicates across categories.
+11. `cluster-merge-worker` applies merge decisions.
+12. `category-briefing-worker` generates briefs for eligible priorities.
+13. `mattermost-worker` publishes configured briefs after deduplication.
+14. `api` exposes current state through pages, JSON endpoints, and RSS 2.0 feeds.
+
+## Impact and briefing pipeline
+
+Impact scoring and briefing generation use provider fallback chains. Free or lower-cost providers are attempted first, and OpenAI is kept as the paid final fallback.
+
+The default fallback chains are configured through:
+
+```bash
+IMPACT_MODEL_FALLBACKS=
+BRIEFING_MODEL_FALLBACKS=
+```
+
+Provider cooldown and batch controls are configured through `LLM_*` variables. This lets the stack reduce load on providers that return rate limits, payload-size errors, transport failures, or invalid responses.
+
+Brief output language is configurable:
+
+```bash
+BRIEFING_OUTPUT_LANGUAGE=Spanish
+```
+
+`CATEGORY_BRIEFING_EXCLUDE_LEVELS` can skip low-value briefing work, for example:
+
+```bash
+CATEGORY_BRIEFING_EXCLUDE_LEVELS=consumer-electronics:P3
+```
+
+## Deduplication strategy
+
+SignalRSS deduplicates at several layers:
+
+- Article-level deduplication prevents the same source story from being stored repeatedly.
+- Category clustering groups semantically similar articles inside the same topic.
+- Priority adjudication detects duplicate clusters within the same category and across priority levels.
+- Cross-category adjudication detects similar stories that landed in different categories.
+- Mattermost global story deduplication prevents reposting the same story in multiple channels.
+
+When cross-category clusters are merged, precedence is based on impact level first, then article count, then category preference.
+
+## Mattermost publishing
+
+Mattermost publishing is opt-in through:
+
+```bash
+MATTERMOST_ENABLED=true
+MATTERMOST_WEBHOOK_URL=
+MATTERMOST_CHANNELS_BY_CATEGORY=
+```
+
+The worker publishes configured levels from `MATTERMOST_LEVELS`, currently typically `P0`. It can extract thumbnails from source links, generate missing thumbnails, upload generated images to a temporary hosting provider, and store notification state to avoid duplicate posts.
+
+Generated thumbnails are local runtime artifacts and should not be committed.
+
+## Public interfaces
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/` | Dashboard with feed counts, queues, provider outcomes, Mattermost status, and swipe summaries. |
+| `/news` | Mobile-first swipe interface for priority clusters. |
+| `/rss.xml` | Unified RSS 2.0 feed. |
+| `/rss.xml?category=<slug>` | Unified RSS filtered by category. |
+| `/rss/<slug>.xml` | Category-specific RSS 2.0 feed. |
+| `/groups.xml` | Grouped story RSS feed. |
+| `/api/clusters` | Cluster JSON API. |
+| `/api/news` | Queue data for the `/news` UI. |
+| `/api/news/swipe` | Records `/news` swipe decisions. |
+| `/api/news/interested` | Lists selected stories. |
+| `/feeds/stats` | Feed health and ingestion stats. |
+| `/categories/stats` | Category stats. |
+| `/classification/stats` | Classification stats. |
+| `/clusters/stats` | Cluster stats. |
+| `/impact/stats` | Impact scoring stats. |
+
+## Observability
+
+Langfuse traces are used for LLM-backed work where supported by the application. Provider outcomes are also stored in `llm_request_logs`, which makes it possible to compare success rates, latency, model fallbacks, and cost-driving behavior.
+
+Operational state is visible in the home dashboard and through container logs:
+
+```bash
+docker compose ps
+docker compose logs -f category-impact-worker
+docker compose logs -f category-briefing-worker
+docker compose logs -f mattermost-worker
+```
+
+## Local commands
+
+Start the stack:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
+Start the nominal runtime shape:
+
 ```bash
-curl http://localhost:3000/health
-curl http://localhost:3000/ready
-curl http://localhost:3000/feeds/stats
-curl http://localhost:3000/categories/stats
-curl http://localhost:3000/classification/stats
-curl http://localhost:3000/clusters/stats
-curl http://localhost:3000/api/clusters
-curl http://localhost:3000/rss.xml
-curl 'http://localhost:3000/rss.xml?category=artificial-intelligence'
-curl http://localhost:3000/rss/artificial-intelligence.xml
-curl http://localhost:3000/groups.xml
+docker compose -f docker-compose.yml -f compose.nominal.yml up -d --build
 ```
 
 Run the initial seven-day import:
@@ -90,27 +181,12 @@ Run the initial seven-day import:
 docker compose --profile jobs run --rm backfill
 ```
 
-Classify recent articles:
+Validate Docker Compose:
 
 ```bash
-docker compose --profile jobs run --rm classifier
+docker compose config --quiet
 ```
 
-Fill `OPENAI_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL` in `.env` before running the classifier.
+## Version policy
 
-Run continuous classification:
-
-```bash
-docker compose up -d classifier-worker
-```
-
-Run semantic clustering:
-
-```bash
-docker compose --profile jobs run --rm clusterer
-docker compose up -d cluster-worker
-```
-
-## Next Implementation Step
-
-Add semantic story clustering on top of stored article embeddings.
+Use stable service and library versions intentionally. PostgreSQL major versions require explicit migration planning because data directories are tied to the major version. The current database image is `pgvector/pgvector:pg18`.

@@ -64,10 +64,10 @@ Start the stack:
 docker compose up --build
 ```
 
-Or, on Windows/WSL when Docker is exposed through Docker Desktop:
+Or, on Windows/WSL when Docker is exposed through Docker Desktop, run Docker Compose from PowerShell in the repository directory:
 
 ```bash
-powershell.exe -NoProfile -Command "Set-Location 'C:\Users\aa9936\Downloads\rss\SignalRSS'; docker.exe compose up --build"
+powershell.exe -NoProfile -Command "docker.exe compose up --build"
 ```
 
 Check health:
@@ -170,10 +170,10 @@ MATTERMOST_ENABLED=true
 MATTERMOST_WEBHOOK_URL=
 MATTERMOST_USERNAME=SignalRSS
 MATTERMOST_LEVELS=P0
-MATTERMOST_CHANNELS_BY_CATEGORY=artificial-intelligence:news-ai,cloud-infrastructure:news-cloud
+MATTERMOST_CHANNELS_BY_CATEGORY=artificial-intelligence:news-ai,cloud-infrastructure:news-cloud,cybersecurity:news-cybersecurity
 ```
 
-The webhook can override username and channel only if the Mattermost integration allows it. `mattermost-worker` uses idempotency and cross-category deduplication so the same story should not be posted repeatedly across configured categories.
+The full category-to-channel mapping lives in `.env.example`. The webhook can override username and channel only if the Mattermost integration allows it. `mattermost-worker` uses idempotency and cross-category deduplication so the same story should not be posted repeatedly across configured categories.
 
 Generated thumbnails are stored locally under `data/generated-thumbnails/` and are intentionally ignored by Git.
 
