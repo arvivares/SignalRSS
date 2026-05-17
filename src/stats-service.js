@@ -41,6 +41,7 @@ export async function buildDashboardMetrics() {
     { rows: claimRows },
     { rows: newsSwipeSummaryRows },
     { rows: newsSwipeRecentRows },
+    { rows: workerActivityRows },
   ] = await Promise.all([
     pool.query(`
       SELECT
@@ -274,6 +275,88 @@ export async function buildDashboardMetrics() {
       ORDER BY swiped_at DESC
       LIMIT 16
     `).catch(() => ({ rows: [] })),
+    pool.query(`
+      WITH latest_fetch AS (
+        SELECT
+          'ingest' AS component,
+          'feeds' AS category,
+          fr.status,
+          coalesce(fr.finished_at, fr.started_at) AS last_activity_at,
+          concat(fr.items_found, ' found / ', fr.items_inserted, ' inserted') AS detail
+        FROM fetch_runs fr
+        ORDER BY coalesce(fr.finished_at, fr.started_at) DESC
+        LIMIT 1
+      ),
+      latest_classification AS (
+        SELECT
+          'classification' AS component,
+          'all' AS category,
+          cr.status,
+          coalesce(cr.finished_at, cr.started_at) AS last_activity_at,
+          concat(cr.articles_classified, '/', cr.articles_considered, ' articles') AS detail
+        FROM classification_runs cr
+        ORDER BY coalesce(cr.finished_at, cr.started_at) DESC
+        LIMIT 1
+      ),
+      latest_clustering AS (
+        SELECT
+          'clustering' AS component,
+          'all' AS category,
+          cr.status,
+          coalesce(cr.finished_at, cr.started_at) AS last_activity_at,
+          concat(cr.articles_clustered, '/', cr.articles_considered, ' articles') AS detail
+        FROM clustering_runs cr
+        ORDER BY coalesce(cr.finished_at, cr.started_at) DESC
+        LIMIT 1
+      ),
+      latest_impact AS (
+        SELECT DISTINCT ON (coalesce(ir.category_slug, 'all'))
+          'impact' AS component,
+          coalesce(ir.category_slug, 'all') AS category,
+          ir.status,
+          coalesce(ir.finished_at, ir.started_at) AS last_activity_at,
+          concat(ir.clusters_scored, '/', ir.clusters_considered, ' clusters') AS detail
+        FROM impact_scoring_runs ir
+        ORDER BY coalesce(ir.category_slug, 'all'), coalesce(ir.finished_at, ir.started_at) DESC
+      ),
+      latest_briefings AS (
+        SELECT DISTINCT ON (tc.slug, split_part(cb.briefing_type, '-', 1))
+          'briefing' AS component,
+          tc.slug || ':' || upper(split_part(cb.briefing_type, '-', 1)) AS category,
+          'generated' AS status,
+          cb.updated_at AS last_activity_at,
+          cb.model AS detail
+        FROM cluster_briefings cb
+        JOIN story_clusters sc ON sc.id = cb.cluster_id
+        JOIN topic_categories tc ON tc.id = sc.category_id
+        WHERE cb.updated_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY tc.slug, split_part(cb.briefing_type, '-', 1), cb.updated_at DESC
+      ),
+      latest_mattermost AS (
+        SELECT DISTINCT ON (coalesce(tc.slug, 'unknown'), mn.status)
+          'mattermost' AS component,
+          coalesce(tc.slug, 'unknown') AS category,
+          mn.status,
+          mn.updated_at AS last_activity_at,
+          coalesce(nullif(mn.error, ''), coalesce(mn.response_status::text, '')) AS detail
+        FROM mattermost_notifications mn
+        LEFT JOIN story_clusters sc ON sc.id = mn.cluster_id
+        LEFT JOIN topic_categories tc ON tc.id = sc.category_id
+        WHERE mn.updated_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY coalesce(tc.slug, 'unknown'), mn.status, mn.updated_at DESC
+      )
+      SELECT *
+      FROM (
+        SELECT * FROM latest_fetch
+        UNION ALL SELECT * FROM latest_classification
+        UNION ALL SELECT * FROM latest_clustering
+        UNION ALL SELECT * FROM latest_impact
+        UNION ALL SELECT * FROM latest_briefings
+        UNION ALL SELECT * FROM latest_mattermost
+      ) activity
+      ORDER BY last_activity_at DESC NULLS LAST
+      LIMIT 18
+    `).catch(() => ({ rows: [] })),
   ]);
 
   const briefingPendingRows = filterBriefingRows(briefingRows);
@@ -332,6 +415,7 @@ export async function buildDashboardMetrics() {
       summary: newsSwipeSummaryRows,
       recent: newsSwipeRecentRows,
     },
+    workerActivity: workerActivityRows,
     backlogTotals,
     refreshedAt: new Date(),
   };

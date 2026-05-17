@@ -208,8 +208,12 @@ function renderProviderPulse(ops = {}) {
   </div>`;
 }
 
+export function mattermostFailureRows(rows = []) {
+  return rows.filter((row) => row.status === 'failed');
+}
+
 function renderMattermostPulse(rows = []) {
-  const failed = rows.filter((row) => row.status === 'failed');
+  const failed = mattermostFailureRows(rows);
   if (!failed.length) return '<p class="ok">Sin fallos Mattermost recientes.</p>';
   return `<div class="status-list compact">
     ${failed.slice(0, 4).map((row) => `<div class="status-row">
@@ -219,6 +223,27 @@ function renderMattermostPulse(rows = []) {
       </div>
       <div class="danger">${formatNumber(row.notifications)}</div>
     </div>`).join('')}
+  </div>`;
+}
+
+function renderWorkerActivity(rows = []) {
+  if (!rows.length) return '<p>No hay actividad reciente registrada.</p>';
+  return `<div class="status-list compact">
+    ${rows.slice(0, 10).map((row) => {
+      const status = String(row.status || '').toLowerCase();
+      const tone = status.includes('fail') || status.includes('error')
+        ? 'danger'
+        : status.includes('running') || status.includes('pending')
+          ? 'warn'
+          : 'ok';
+      return `<div class="status-row">
+        <div>
+          <strong>${escapeHtml(row.component)} · ${escapeHtml(row.category || '-')}</strong>
+          <span>${escapeHtml(formatUtc(row.last_activity_at))}${row.detail ? ` · ${escapeHtml(row.detail)}` : ''}</span>
+        </div>
+        <div class="${tone}">${escapeHtml(row.status || '-')}</div>
+      </div>`;
+    }).join('')}
   </div>`;
 }
 
@@ -495,17 +520,24 @@ export async function renderDashboardPage({ renderLayout }) {
         ${renderBacklogStatus(metrics.backlog)}
       </section>
       <section class="card">
+        <h2>Actividad de workers</h2>
+        <p>Última actividad persistida por componente y categoría. Se actualiza al refrescar.</p>
+        ${renderWorkerActivity(metrics.workerActivity)}
+      </section>
+    </div>
+    <div class="dashboard-grid">
+      <section class="card">
         <h2>Mattermost P0</h2>
         <p>Publicaciones registradas para categorías integradas: ${escapeHtml(renderMattermostConfiguredCategories(metrics.mattermostCategories))}.</p>
         ${renderMattermostPulse(ops.mattermost)}
         ${renderMattermostStatus(metrics.mattermost)}
       </section>
-    </div>
-    <div class="dashboard-grid">
       <section class="card">
         <h2>Briefings pendientes</h2>
         ${renderPendingBriefings(metrics.briefingPending)}
       </section>
+    </div>
+    <div class="dashboard-grid">
       <section class="card">
         <h2>Briefings generados</h2>
         <p>Throughput reciente por categoría y prioridad.</p>
