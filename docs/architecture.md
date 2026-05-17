@@ -113,6 +113,17 @@ SignalRSS deduplicates at several layers:
 
 When cross-category clusters are merged, precedence is based on impact level first, then article count, then category preference.
 
+## Publication clearance
+
+Mattermost publishing is intentionally downstream from duplicate validation. A cluster is eligible to post only after these checks pass:
+
+- No previous `mattermost_notifications` row exists for the same `story_hash` and locale in a blocking status.
+- No cross-category adjudication has already marked the cluster as `same_story` with a posted counterpart.
+- No unresolved `same_story` cross-category adjudication still references the cluster.
+- If `MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE=true`, no unadjudicated cross-category cluster in the Mattermost window has centroid similarity greater than or equal to `MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY`.
+
+The last rule is the pre-publish safety gate. It prevents Mattermost from publishing a P0 before the cross-category worker has had a chance to decide whether the story is a duplicate in another category. If the gate holds a cluster, the cross-category adjudication worker should process the candidate first; the Mattermost worker can publish after the candidate is adjudicated as distinct/related, or after a same-story merge resolves it into the winning cluster.
+
 ## Mattermost publishing
 
 Mattermost publishing is opt-in through:

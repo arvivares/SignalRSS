@@ -14,6 +14,7 @@ SignalRSS ingests untrusted RSS feeds, article metadata, thumbnails, and generat
 
 - The application image runs as the non-root `node` user.
 - Long-running application services drop all Linux capabilities and set `no-new-privileges:true`.
+- The API and Postgres host ports bind to `127.0.0.1` by default. Override `API_BIND_ADDRESS` or `POSTGRES_BIND_ADDRESS` only when intentionally exposing them.
 - Postgres keeps its standard image runtime configuration because it manages its own database process and volume permissions.
 
 ## HTTP Responses
@@ -25,6 +26,14 @@ API, RSS, HTML, JSON, and generated thumbnail responses include security headers
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy`
 - A restrictive Content Security Policy suitable for the current inline UI.
+
+## API Request Controls
+
+- Docker binds the API to `127.0.0.1` by default through `API_BIND_ADDRESS`.
+- The Node HTTP server enforces request, header, keep-alive, URL-length, and header-count limits.
+- JSON request bodies require `application/json`, have a byte cap, and malformed JSON returns `400` instead of leaking an internal error.
+- Write requests use a small in-memory per-client rate limit controlled by `API_WRITE_RATE_LIMIT_WINDOW_MS` and `API_WRITE_RATE_LIMIT_MAX`.
+- Server errors return a generic message to clients while details stay in logs.
 
 ## Dependency Hygiene
 
