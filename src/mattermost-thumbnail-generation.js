@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { config } from './config.js';
 import { fetchWithTimeout } from './http-utils.js';
 import { startLangfuseGeneration, startLangfuseTracing } from './langfuse.js';
+import { redactSecrets, safeErrorMessage } from './log-utils.js';
 import { cleanText } from './text-utils.js';
 import { elapsedMs, formatDuration, nowMs, sleep } from './timing-utils.js';
 
@@ -277,7 +278,7 @@ async function generateThumbnailWithOpenRouter({ prompt, timings }) {
   const bodyText = await response.text();
   timings.thumbnail_generate_ms = elapsedMs(generateStart);
   if (!response.ok) {
-    throw new Error(`OpenRouter image generation failed HTTP ${response.status}: ${bodyText.slice(0, 500)}`);
+    throw new Error(`OpenRouter image generation failed HTTP ${response.status}: ${redactSecrets(bodyText).slice(0, 500)}`);
   }
 
   const body = JSON.parse(bodyText);
@@ -318,7 +319,7 @@ async function generateThumbnailWithNvidia({ prompt, timings }) {
   const bodyText = await response.text();
   timings.thumbnail_generate_ms = elapsedMs(generateStart);
   if (!response.ok) {
-    throw new Error(`NVIDIA image generation failed HTTP ${response.status}: ${bodyText.slice(0, 500)}`);
+    throw new Error(`NVIDIA image generation failed HTTP ${response.status}: ${redactSecrets(bodyText).slice(0, 500)}`);
   }
 
   const body = JSON.parse(bodyText);
@@ -364,7 +365,7 @@ async function generateThumbnailImageWithRetry({ prompt, timings }) {
           }
           providerErrors.push(`${provider}: empty image response`);
         } catch (error) {
-          providerErrors.push(`${provider}: ${error.message}`);
+          providerErrors.push(`${provider}: ${safeErrorMessage(error)}`);
         }
       }
       if (!response?.data?.length) {
@@ -386,14 +387,14 @@ async function generateThumbnailImageWithRetry({ prompt, timings }) {
         attempt,
         ok: false,
         ms: attemptMs,
-        error: cleanText(error.message).slice(0, 220),
+        error: cleanText(safeErrorMessage(error, 220)),
       });
       timings.thumbnail_generation_attempt_count = timings.thumbnail_generation_attempts.length;
 
       if (attempt >= attempts) throw error;
 
       const backoffMs = config.mattermostGeneratedThumbnailBackoffMs[attempt - 1] ?? 0;
-      console.warn(`Generated thumbnail attempt ${attempt}/${attempts} failed in ${formatDuration(attemptMs)}; retrying in ${formatDuration(backoffMs)}: ${error.message}`);
+      console.warn(`Generated thumbnail attempt ${attempt}/${attempts} failed in ${formatDuration(attemptMs)}; retrying in ${formatDuration(backoffMs)}: ${safeErrorMessage(error)}`);
       await sleep(backoffMs);
     }
   }
@@ -420,8 +421,8 @@ export async function generateThumbnailImageWithTrace({ briefing, timings }) {
   } catch (error) {
     generation?.update({
       level: 'ERROR',
-      statusMessage: error.message,
-      output: { error: error.message },
+      statusMessage: safeErrorMessage(error),
+      output: { error: safeErrorMessage(error) },
     });
     throw error;
   } finally {

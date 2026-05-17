@@ -41,6 +41,12 @@ function keyValueEnv(name) {
 export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgres://signalrss:signalrss@localhost:5432/signalrss',
   apiPort: Number(process.env.API_PORT || 3000),
+  apiRequestTimeoutMs: Number(process.env.API_REQUEST_TIMEOUT_MS || 30000),
+  apiHeadersTimeoutMs: Number(process.env.API_HEADERS_TIMEOUT_MS || 10000),
+  apiKeepAliveTimeoutMs: Number(process.env.API_KEEP_ALIVE_TIMEOUT_MS || 5000),
+  apiMaxUrlLength: Number(process.env.API_MAX_URL_LENGTH || 2048),
+  apiWriteRateLimitWindowMs: Number(process.env.API_WRITE_RATE_LIMIT_WINDOW_MS || 60000),
+  apiWriteRateLimitMax: Number(process.env.API_WRITE_RATE_LIMIT_MAX || 120),
   workerPollIntervalSeconds: Number(process.env.WORKER_POLL_INTERVAL_SECONDS || 300),
   workerBatchSize: Number(process.env.WORKER_BATCH_SIZE || 50),
   ingestWindowDays: Number(process.env.INGEST_WINDOW_DAYS || 7),
@@ -1207,6 +1213,8 @@ export const config = {
   mattermostStabilityDelayMinutes: Number(process.env.MATTERMOST_STABILITY_DELAY_MINUTES || 10),
   mattermostProcessingStaleMinutes: Number(process.env.MATTERMOST_PROCESSING_STALE_MINUTES || 10),
   mattermostFailedRetryBackoffMinutes: numberEnv('MATTERMOST_FAILED_RETRY_BACKOFF_MINUTES', 5),
+  mattermostRequireCrossCategoryClearance: booleanEnv('MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE', true),
+  mattermostCrossCategoryClearanceMinSimilarity: numberEnv('MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY', 0.68),
   mattermostCategorySlug: process.env.MATTERMOST_CATEGORY_SLUG || 'artificial-intelligence',
   mattermostCategorySlugs: listEnv(
     'MATTERMOST_CATEGORY_SLUGS',

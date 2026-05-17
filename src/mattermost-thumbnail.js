@@ -34,11 +34,25 @@ async function imageResponseBuffer(image, timings) {
   if (image.b64_json) {
     const decodeStart = nowMs();
     const buffer = Buffer.from(image.b64_json, 'base64');
+    if (buffer.byteLength > THUMBNAIL_DOWNLOAD_MAX_BYTES) {
+      throw new Error(`Generated thumbnail too large: ${buffer.byteLength} bytes exceeds ${THUMBNAIL_DOWNLOAD_MAX_BYTES}`);
+    }
     timings.thumbnail_decode_ms = elapsedMs(decodeStart);
     return buffer;
   }
 
   if (image.url) {
+    const dataMatch = /^data:image\/[a-z0-9.+-]+;base64,([a-z0-9+/=\s]+)$/i.exec(String(image.url));
+    if (dataMatch) {
+      const decodeStart = nowMs();
+      const buffer = Buffer.from(dataMatch[1].replace(/\s+/g, ''), 'base64');
+      if (buffer.byteLength > THUMBNAIL_DOWNLOAD_MAX_BYTES) {
+        throw new Error(`Generated thumbnail too large: ${buffer.byteLength} bytes exceeds ${THUMBNAIL_DOWNLOAD_MAX_BYTES}`);
+      }
+      timings.thumbnail_decode_ms = elapsedMs(decodeStart);
+      return buffer;
+    }
+
     const downloadStart = nowMs();
     const imageResponse = await fetchWithTimeout(image.url);
     const buffer = imageResponse.ok

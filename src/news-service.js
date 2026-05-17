@@ -3,6 +3,7 @@ import { storyHashFromParts } from './story-hash.js';
 import { isBriefingExcluded } from './briefing-exclusions.js';
 
 const PRIORITY_LEVELS = ['P0', 'P1', 'P2', 'P3'];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizePriorityLevels(level) {
   if (!level) return PRIORITY_LEVELS;
@@ -81,6 +82,12 @@ export async function buildNewsQueue({ limit = 40, hours = 168, level = null } =
 }
 
 export async function recordNewsSwipe({ clusterId, action }) {
+  if (!UUID_REGEX.test(String(clusterId || ''))) {
+    const error = new Error('Invalid cluster_id');
+    error.statusCode = 400;
+    throw error;
+  }
+
   if (!['interested', 'dismissed'].includes(action)) {
     const error = new Error('Invalid action');
     error.statusCode = 400;

@@ -13,6 +13,7 @@ import { shutdownLangfuseTracing } from './langfuse.js';
 import { elapsedMs, nowMs } from './timing-utils.js';
 import { assertSafeHttpUrl } from './url-security.js';
 import { fetchWithTimeout } from './http-utils.js';
+import { redactSecrets } from './log-utils.js';
 
 function normalizeLevels(levels) {
   const allowed = new Set(['P0', 'P1', 'P2', 'P3']);
@@ -55,7 +56,7 @@ async function postToMattermost(briefing, destination) {
   return {
     ok: response.ok,
     status: response.status,
-    body: body.slice(0, 1000),
+    body: redactSecrets(body).slice(0, 1000),
     payload: {
       ...payload,
       signalrss_diagnostics: {

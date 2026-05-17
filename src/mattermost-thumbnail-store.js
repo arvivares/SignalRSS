@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 import { fetchWithTimeout, responseTextWithLimit } from './http-utils.js';
+import { safeErrorMessage } from './log-utils.js';
 import { cleanText } from './text-utils.js';
 import { elapsedMs, formatDuration, nowMs, sleep } from './timing-utils.js';
 
@@ -49,7 +50,7 @@ async function uploadGeneratedThumbnailOnce({ buffer, filename }) {
 
     return body;
   } catch (error) {
-    throw new Error(`Generated thumbnail upload failed: ${error.message}`);
+    throw new Error(`Generated thumbnail upload failed: ${safeErrorMessage(error)}`);
   }
 }
 
@@ -77,16 +78,16 @@ async function uploadGeneratedThumbnail({ buffer, filename, timings = {} }) {
         attempt,
         ok: false,
         ms: attemptMs,
-        error: error.message.slice(0, 220),
+        error: safeErrorMessage(error, 220),
       });
 
       if (attempt >= attempts) {
-        console.warn(`Generated thumbnail upload failed after ${attempts} attempts: ${error.message}`);
+        console.warn(`Generated thumbnail upload failed after ${attempts} attempts: ${safeErrorMessage(error)}`);
         return '';
       }
 
       const backoffMs = config.mattermostImageUploadBackoffMs[attempt - 1] ?? 0;
-      console.warn(`Generated thumbnail upload attempt ${attempt}/${attempts} failed in ${formatDuration(attemptMs)}; retrying in ${formatDuration(backoffMs)}: ${error.message}`);
+      console.warn(`Generated thumbnail upload attempt ${attempt}/${attempts} failed in ${formatDuration(attemptMs)}; retrying in ${formatDuration(backoffMs)}: ${safeErrorMessage(error)}`);
       await sleep(backoffMs);
     }
   }

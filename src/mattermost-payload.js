@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { safeErrorMessage } from './log-utils.js';
 import { buildLinksText, buildMattermostText } from './mattermost-message.js';
 import {
   generatedImageTargetDimensions,
@@ -42,8 +43,8 @@ export async function mattermostPayload(briefing, destination, timings = {}) {
       thumbnailUrl = await loadGeneratedThumbnailUrl(briefing, timings);
     } catch (error) {
       timings.thumbnail_generation_failed = true;
-      timings.thumbnail_generation_error = cleanText(error.message).slice(0, 500);
-      console.warn(`Generated thumbnail failed for cluster=${briefing.cluster_id}: ${error.message}`);
+      timings.thumbnail_generation_error = cleanText(safeErrorMessage(error));
+      console.warn(`Generated thumbnail failed for cluster=${briefing.cluster_id}: ${safeErrorMessage(error)}`);
     } finally {
       timings.thumbnail_generated_total_ms = elapsedMs(generatedThumbnailStart);
     }

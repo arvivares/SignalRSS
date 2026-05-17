@@ -100,6 +100,9 @@ export async function loadPendingBriefings({ destination, levels }) {
         cb.links,
         cb.generated_at,
         sc.latest_published_at,
+        sc.centroid_embedding_vector,
+        sc.embedding_model,
+        sc.category_id,
         tc.slug AS category_slug,
         cis.impact_level,
         cis.impact_score,
@@ -156,6 +159,31 @@ export async function loadPendingBriefings({ destination, levels }) {
       )
       AND NOT EXISTS (
         SELECT 1
+        FROM story_clusters other_sc
+        JOIN cluster_impact_scores other_cis ON other_cis.cluster_id = other_sc.id
+        LEFT JOIN cross_category_cluster_adjudications existing_cca
+          ON (
+            existing_cca.left_cluster_id = cb.cluster_id
+            AND existing_cca.right_cluster_id = other_sc.id
+          )
+          OR (
+            existing_cca.left_cluster_id = other_sc.id
+            AND existing_cca.right_cluster_id = cb.cluster_id
+          )
+        WHERE $9::boolean = true
+          AND cb.centroid_embedding_vector IS NOT NULL
+          AND other_sc.centroid_embedding_vector IS NOT NULL
+          AND other_sc.id <> cb.cluster_id
+          AND other_sc.category_id <> cb.category_id
+          AND other_sc.embedding_model = cb.embedding_model
+          AND other_cis.impact_level = ANY($1::text[])
+          AND other_sc.latest_published_at >= NOW() - ($2::int * INTERVAL '1 hour')
+          AND other_sc.latest_published_at <= NOW()
+          AND 1 - (other_sc.centroid_embedding_vector <=> cb.centroid_embedding_vector) >= $10::float
+          AND existing_cca.id IS NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1
         FROM mattermost_notifications mn
         WHERE mn.cluster_id = cb.cluster_id
           AND mn.locale = cb.locale
@@ -185,6 +213,8 @@ export async function loadPendingBriefings({ destination, levels }) {
     config.mattermostStabilityDelayMinutes,
     destination.hash,
     config.mattermostProcessingStaleMinutes,
+    config.mattermostRequireCrossCategoryClearance,
+    config.mattermostCrossCategoryClearanceMinSimilarity,
   ]);
 
   return rows;
