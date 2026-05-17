@@ -11,18 +11,21 @@ function requestFromBody(body, headers = { 'content-type': 'application/json' })
 }
 
 test('redactSecrets removes common provider tokens and query secrets', () => {
+  const openAiKey = `sk-proj-${'abcdefghijklmnopqrstuvwxyz123456'}`;
+  const groqKey = `gsk_${'abcdefghijklmnopqrstuvwxyz123456'}`;
+  const githubToken = `github_pat_${'11AEEKRGI0exampletokenvalue'}`;
   const input = [
-    'Authorization: Bearer sk-proj-abcdefghijklmnopqrstuvwxyz123456',
-    'groq=gsk_abcdefghijklmnopqrstuvwxyz123456',
+    `Authorization: Bearer ${openAiKey}`,
+    `groq=${groqKey}`,
     'url=https://x.test/?api_key=abcdef1234567890&ok=1',
-    'github_pat_11AEEKRGI0exampletokenvalue',
+    githubToken,
   ].join('\n');
 
   const output = redactSecrets(input);
-  assert.equal(output.includes('sk-proj-abcdefghijklmnopqrstuvwxyz123456'), false);
-  assert.equal(output.includes('gsk_abcdefghijklmnopqrstuvwxyz123456'), false);
+  assert.equal(output.includes(openAiKey), false);
+  assert.equal(output.includes(groqKey), false);
   assert.equal(output.includes('abcdef1234567890'), false);
-  assert.equal(output.includes('github_pat_11AEEKRGI0exampletokenvalue'), false);
+  assert.equal(output.includes(githubToken), false);
   assert.match(output, /\[REDACTED\]/);
 });
 

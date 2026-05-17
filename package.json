@@ -55,6 +55,8 @@
     "maintenance:reclassify-cloud-candidates": "node src/reclassify-cloud-candidates.js cloud-infrastructure",
     "maintenance:reclassify-category-candidates": "node src/reclassify-cloud-candidates.js",
     "maintenance:backfill-evidence-quality": "node src/backfill-evidence-quality.js",
+    "security:public": "node scripts/check-public-repo.js",
+    "validate": "npm test && npm run security:public",
     "test": "node --test"
   },
   "dependencies": {
