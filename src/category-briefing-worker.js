@@ -109,7 +109,8 @@ function workerWorkItems(items, workerSlot) {
 
 function batchSizeForProviders(level, providers) {
   const operation = 'briefing_generation';
-  const maxBatchSizes = providers
+  const nonOpenAiProviders = providers.filter((provider) => provider.provider !== 'openai');
+  const boundedFreeBatchSizes = nonOpenAiProviders
     .map((provider) => maxBatchSizeForLlmProvider({
       provider: provider.provider,
       model: provider.model,
@@ -117,21 +118,15 @@ function batchSizeForProviders(level, providers) {
     }))
     .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0)
     .map(Number);
-  const hasFreeProvider = providers.some((provider) => provider.provider !== 'openai');
-  if (hasFreeProvider) {
-    const defaultFreeBatchSize = config.categoryBriefingFreeBatchSize;
-    const hasProviderForDefaultBatch = providers.some((provider) => {
-      if (provider.provider === 'openai') return false;
-      const maxBatchSize = maxBatchSizeForLlmProvider({
-        provider: provider.provider,
-        model: provider.model,
-        operation,
-      });
-      return !maxBatchSize || defaultFreeBatchSize <= maxBatchSize;
-    });
-    if (hasProviderForDefaultBatch) return defaultFreeBatchSize;
-    return Math.max(1, Math.min(...maxBatchSizes, defaultFreeBatchSize));
+  if (nonOpenAiProviders.length > 0) {
+    const defaultFreeBatchSize = Math.max(1, Number(config.categoryBriefingFreeBatchSize) || 1);
+    if (boundedFreeBatchSizes.length === 0) return defaultFreeBatchSize;
+
+    // Keep bounded free providers usable as fallbacks. If an unbounded provider
+    // later fails, the same batch should still fit GitHub/OpenRouter/LLMRack.
+    return Math.max(1, Math.min(defaultFreeBatchSize, ...boundedFreeBatchSizes));
   }
+
   if (providers.some((provider) => provider.provider === 'openai')) return config.categoryBriefingOpenAiBatchSize;
   return undefined;
 }
