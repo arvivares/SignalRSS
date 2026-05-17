@@ -39,14 +39,16 @@ function buildGeneratedThumbnailPrompt(briefing) {
     'Use case: editorial technology news image',
     'Asset type: landscape Mattermost news thumbnail',
     'Primary request: create a polished editorial image for a technology news brief.',
-    `News title: ${cleanText(briefing.title).slice(0, 240)}`,
-    `News summary: ${cleanText(briefing.summary).slice(0, 900)}`,
+    'The title and summary below are private context for concept selection only. Do not render, quote, copy, imitate, or visually represent any words from them inside the image.',
+    `Context title, not image text: ${cleanText(briefing.title).slice(0, 240)}`,
+    `Context summary, not image text: ${cleanText(briefing.summary).slice(0, 900)}`,
     'Style/medium: premium digital editorial illustration, cinematic but factual, modern technology journalism.',
-    'Composition/framing: landscape composition, strong central visual metaphor, high readability at small thumbnail size.',
+    'Composition/framing: landscape composition, strong central visual metaphor, clear silhouettes and recognizable objects at small thumbnail size.',
     'Lighting/mood: crisp, high contrast, serious news tone, not playful.',
     'Color palette: restrained technology palette with one strong accent color, avoid generic purple gradients.',
-    'Constraints: no text, no captions, no logos, no watermarks, no fake UI screenshots, no recognizable public figures unless the brief explicitly requires them.',
-    'Avoid: clutter, tiny details, stock-photo cliches, misleading product branding, distorted hands, unreadable interface text.',
+    'Hard constraints: image must contain zero text. No letters, no numbers, no words, no headlines, no captions, no labels, no symbols that resemble writing, no UI text, no logos, no watermarks.',
+    'Do not create newspapers, screens, signs, dashboards, charts, code editors, terminals, chat bubbles, documents, slides, posters, badges, or product boxes if they contain or imply readable text.',
+    'Avoid: clutter, tiny details, stock-photo cliches, misleading product branding, distorted hands, glyph-like marks, pseudo-text, fake interface text, typographic shapes.',
   ].join('\n');
 }
 
