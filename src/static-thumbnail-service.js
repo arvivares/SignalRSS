@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { withSecurityHeaders } from './response-utils.js';
 
 function generatedThumbnailFilePath(pathname) {
   const publicPath = config.mattermostGeneratedThumbnailPublicPath.replace(/\/$/, '');
@@ -20,15 +21,15 @@ export function serveGeneratedThumbnail(pathname, res) {
   if (!thumbnailPath) return false;
 
   if (!fs.existsSync(thumbnailPath)) {
-    res.writeHead(404, { 'content-type': 'application/json' });
+    res.writeHead(404, withSecurityHeaders({ 'content-type': 'application/json' }));
     res.end(JSON.stringify({ error: 'not_found' }));
     return true;
   }
 
-  res.writeHead(200, {
+  res.writeHead(200, withSecurityHeaders({
     'content-type': 'image/png',
     'cache-control': 'public, max-age=31536000, immutable',
-  });
+  }));
   fs.createReadStream(thumbnailPath).pipe(res);
   return true;
 }

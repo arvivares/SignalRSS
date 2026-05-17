@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { config } from './config.js';
-import { fetchWithTimeout } from './http-utils.js';
+import { fetchWithTimeout, responseArrayBufferWithLimit } from './http-utils.js';
 import { generateThumbnailImageWithTrace } from './mattermost-thumbnail-generation.js';
 export { loadBestThumbnailMetadata } from './mattermost-thumbnail-metadata.js';
 import {
@@ -12,6 +12,11 @@ import {
   writeUploadedThumbnailUrl,
 } from './mattermost-thumbnail-store.js';
 import { elapsedMs, nowMs } from './timing-utils.js';
+
+const THUMBNAIL_DOWNLOAD_MAX_BYTES = Number.parseInt(
+  process.env.MATTERMOST_THUMBNAIL_DOWNLOAD_MAX_BYTES || `${12 * 1024 * 1024}`,
+  10,
+);
 
 export function generatedImageTargetDimensions(size = config.mattermostGeneratedThumbnailSize) {
   const match = /^(\d+)x(\d+)$/i.exec(String(size || '').trim());
@@ -36,7 +41,9 @@ async function imageResponseBuffer(image, timings) {
   if (image.url) {
     const downloadStart = nowMs();
     const imageResponse = await fetchWithTimeout(image.url);
-    const buffer = imageResponse.ok ? Buffer.from(await imageResponse.arrayBuffer()) : null;
+    const buffer = imageResponse.ok
+      ? Buffer.from(await responseArrayBufferWithLimit(imageResponse, { maxBytes: THUMBNAIL_DOWNLOAD_MAX_BYTES }))
+      : null;
     timings.thumbnail_download_ms = elapsedMs(downloadStart);
     return buffer;
   }

@@ -54,13 +54,14 @@
     "maintenance:cleanup-low-confidence": "node src/cleanup-low-confidence-classifications.js",
     "maintenance:reclassify-cloud-candidates": "node src/reclassify-cloud-candidates.js cloud-infrastructure",
     "maintenance:reclassify-category-candidates": "node src/reclassify-cloud-candidates.js",
-    "maintenance:backfill-evidence-quality": "node src/backfill-evidence-quality.js"
+    "maintenance:backfill-evidence-quality": "node src/backfill-evidence-quality.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@langfuse/openai": "^5.3.0",
     "@langfuse/otel": "^5.3.0",
     "@langfuse/tracing": "^5.3.0",
-    "@opentelemetry/sdk-node": "^0.217.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
     "openai": "^6.36.0",
     "pg": "^8.20.0",
     "rss-parser": "^3.13.0"

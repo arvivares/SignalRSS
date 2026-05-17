@@ -11,6 +11,8 @@ import {
 import { mattermostPayload } from './mattermost-payload.js';
 import { shutdownLangfuseTracing } from './langfuse.js';
 import { elapsedMs, nowMs } from './timing-utils.js';
+import { assertSafeHttpUrl } from './url-security.js';
+import { fetchWithTimeout } from './http-utils.js';
 
 function normalizeLevels(levels) {
   const allowed = new Set(['P0', 'P1', 'P2', 'P3']);
@@ -18,6 +20,7 @@ function normalizeLevels(levels) {
 }
 
 async function postToMattermost(briefing, destination) {
+  await assertSafeHttpUrl(config.mattermostWebhookUrl, { allowHttp: false });
   const timings = {};
   const flowStart = nowMs();
   const payloadStart = nowMs();
@@ -25,8 +28,9 @@ async function postToMattermost(briefing, destination) {
   timings.payload_build_ms = elapsedMs(payloadStart);
 
   const postStart = nowMs();
-  const response = await fetch(config.mattermostWebhookUrl, {
+  const response = await fetchWithTimeout(config.mattermostWebhookUrl, {
     method: 'POST',
+    allowHttp: false,
     headers: {
       'content-type': 'application/json',
     },

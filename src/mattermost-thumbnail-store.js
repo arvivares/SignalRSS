@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
-import { fetchWithTimeout } from './http-utils.js';
+import { fetchWithTimeout, responseTextWithLimit } from './http-utils.js';
 import { cleanText } from './text-utils.js';
 import { elapsedMs, formatDuration, nowMs, sleep } from './timing-utils.js';
 
@@ -22,6 +22,8 @@ export function generatedThumbnailUrl(clusterId) {
   return `${config.publicBaseUrl.replace(/\/$/, '')}${publicPath}/${generatedThumbnailFilename(clusterId)}`;
 }
 
+const UPLOAD_RESPONSE_MAX_BYTES = 32 * 1024;
+
 async function uploadGeneratedThumbnailOnce({ buffer, filename }) {
   if (!config.mattermostImageUploadEnabled) return '';
   if (config.mattermostImageUploadProvider !== 'litterbox') {
@@ -40,7 +42,7 @@ async function uploadGeneratedThumbnailOnce({ buffer, filename }) {
       body: form,
       timeoutMs: 30000,
     });
-    const body = cleanText(await response.text());
+    const body = cleanText(await responseTextWithLimit(response, { maxBytes: UPLOAD_RESPONSE_MAX_BYTES }));
     if (!response.ok || !/^https?:\/\//i.test(body)) {
       throw new Error(`HTTP ${response.status} ${body.slice(0, 180)}`);
     }

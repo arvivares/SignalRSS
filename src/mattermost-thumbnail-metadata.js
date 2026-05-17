@@ -1,7 +1,12 @@
 import { config } from './config.js';
 import { pool } from './db.js';
-import { fetchWithTimeout } from './http-utils.js';
+import { fetchWithTimeout, responseArrayBufferWithLimit } from './http-utils.js';
 import { parseImageDimensions, uniqueImageCandidates } from './image-utils.js';
+
+const IMAGE_METADATA_MAX_BYTES = Number.parseInt(
+  process.env.MATTERMOST_THUMBNAIL_METADATA_MAX_BYTES || `${512 * 1024}`,
+  10,
+);
 
 async function loadImageMetadata(candidate) {
   try {
@@ -37,7 +42,9 @@ async function loadImageMetadata(candidate) {
     });
 
     if (!response.ok) return { url: candidate.url, width: null, height: null, area: 0 };
-    const dimensions = parseImageDimensions(Buffer.from(await response.arrayBuffer()));
+    const dimensions = parseImageDimensions(Buffer.from(
+      await responseArrayBufferWithLimit(response, { maxBytes: IMAGE_METADATA_MAX_BYTES }),
+    ));
     return {
       url: candidate.url,
       width: dimensions?.width || null,

@@ -25,6 +25,7 @@ The system is Docker-first. It is designed to keep running continuously: feed po
 | `data/feeds.csv` | Curated feed list loaded by the seeder. |
 | `data/topic-categories.json` | Persistent technology category taxonomy. |
 | `docs/architecture.md` | Detailed architecture notes. |
+| `docs/security.md` | Security posture, SSRF controls, container hardening, and validation checks. |
 | `docker-compose.yml` | Full local stack and worker definitions. |
 | `compose.nominal.yml` | Nominal runtime override for the steady-state stack. |
 | `.env.example` | Safe configuration template. Copy it to `.env` and fill secrets locally. |

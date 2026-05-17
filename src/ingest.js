@@ -1,6 +1,6 @@
 import Parser from 'rss-parser';
 import { pool } from './db.js';
-import { fetchWithTimeout } from './http-utils.js';
+import { fetchWithTimeout, responseTextWithLimit } from './http-utils.js';
 import { hashInput } from './text-utils.js';
 
 const parser = new Parser({
@@ -14,6 +14,7 @@ const parser = new Parser({
 });
 
 const FEED_FETCH_TIMEOUT_MS = 60000;
+const FEED_MAX_BYTES = Number.parseInt(process.env.FEED_MAX_BYTES || `${10 * 1024 * 1024}`, 10);
 const FEED_ACCEPT_HEADER = 'application/rss+xml, application/rdf+xml;q=0.8, application/atom+xml;q=0.6, application/xml;q=0.4, text/xml;q=0.4';
 
 export function cutoffDate(days) {
@@ -74,7 +75,7 @@ async function fetchFeedXml(url) {
     timeoutMessage: `Request timed out after ${FEED_FETCH_TIMEOUT_MS}ms`,
   });
   if (!response.ok) throw new Error(`Status code ${response.status}`);
-  return (await response.text()).replace(/^\uFEFF/, '').trimStart();
+  return (await responseTextWithLimit(response, { maxBytes: FEED_MAX_BYTES })).replace(/^\uFEFF/, '').trimStart();
 }
 
 async function parseFeedUrl(url) {

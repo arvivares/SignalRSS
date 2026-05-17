@@ -12,5 +12,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 COPY db ./db
-COPY data ./data
+COPY --chown=node:node data ./data
+RUN mkdir -p /app/data/generated-thumbnails && chown -R node:node /app/data
+USER node
 CMD ["npm", "run", "api"]

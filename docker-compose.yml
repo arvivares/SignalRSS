@@ -67,7 +67,14 @@ x-llm-env: &llm-env
   LLM_BAD_RESPONSE_COOLDOWN_MS: ${LLM_BAD_RESPONSE_COOLDOWN_MS:-120000}
   LLM_MODEL_ERROR_COOLDOWN_MS: ${LLM_MODEL_ERROR_COOLDOWN_MS:-30000}
 
+x-app-hardening: &app-hardening
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
 x-category-impact-worker-base: &category-impact-worker-base
+  <<: *app-hardening
   build: .
   environment: &category-impact-worker-env
     <<: [*db-env, *llm-env, *langfuse-env]
@@ -160,6 +167,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
       INGEST_WINDOW_DAYS: ${INGEST_WINDOW_DAYS:-7}
+      FEED_MAX_BYTES: ${FEED_MAX_BYTES:-10485760}
       BACKFILL_CONCURRENCY: ${BACKFILL_CONCURRENCY:-8}
     command: ["npm", "run", "backfill:7d"]
     profiles:
@@ -700,6 +708,7 @@ services:
     restart: "no"
 
   mattermost-notifier:
+    <<: *app-hardening
     build: .
     dns:
       - 1.1.1.1
@@ -725,6 +734,8 @@ services:
       MATTERMOST_CHANNEL: ${MATTERMOST_CHANNEL:-}
       MATTERMOST_CHANNELS_BY_CATEGORY: ${MATTERMOST_CHANNELS_BY_CATEGORY:-}
       MATTERMOST_THUMBNAIL_MAX_CANDIDATES: ${MATTERMOST_THUMBNAIL_MAX_CANDIDATES:-12}
+      MATTERMOST_THUMBNAIL_METADATA_MAX_BYTES: ${MATTERMOST_THUMBNAIL_METADATA_MAX_BYTES:-524288}
+      MATTERMOST_THUMBNAIL_DOWNLOAD_MAX_BYTES: ${MATTERMOST_THUMBNAIL_DOWNLOAD_MAX_BYTES:-12582912}
       MATTERMOST_GENERATE_MISSING_THUMBNAILS: ${MATTERMOST_GENERATE_MISSING_THUMBNAILS:-true}
       MATTERMOST_GENERATED_THUMBNAIL_MODEL: ${MATTERMOST_GENERATED_THUMBNAIL_MODEL:-gpt-image-2}
       MATTERMOST_GENERATED_THUMBNAIL_SIZE: ${MATTERMOST_GENERATED_THUMBNAIL_SIZE:-1536x1024}
@@ -768,6 +779,7 @@ services:
     restart: "no"
 
   classifier-worker:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
@@ -864,6 +876,7 @@ services:
     restart: unless-stopped
 
   cluster-merge-worker:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
@@ -989,6 +1002,7 @@ services:
     restart: unless-stopped
 
   mattermost-worker:
+    <<: *app-hardening
     build: .
     dns:
       - 1.1.1.1
@@ -1014,6 +1028,8 @@ services:
       MATTERMOST_CHANNEL: ${MATTERMOST_CHANNEL:-}
       MATTERMOST_CHANNELS_BY_CATEGORY: ${MATTERMOST_CHANNELS_BY_CATEGORY:-}
       MATTERMOST_THUMBNAIL_MAX_CANDIDATES: ${MATTERMOST_THUMBNAIL_MAX_CANDIDATES:-12}
+      MATTERMOST_THUMBNAIL_METADATA_MAX_BYTES: ${MATTERMOST_THUMBNAIL_METADATA_MAX_BYTES:-524288}
+      MATTERMOST_THUMBNAIL_DOWNLOAD_MAX_BYTES: ${MATTERMOST_THUMBNAIL_DOWNLOAD_MAX_BYTES:-12582912}
       MATTERMOST_GENERATE_MISSING_THUMBNAILS: ${MATTERMOST_GENERATE_MISSING_THUMBNAILS:-true}
       MATTERMOST_GENERATED_THUMBNAIL_MODEL: ${MATTERMOST_GENERATED_THUMBNAIL_MODEL:-gpt-image-2}
       MATTERMOST_GENERATED_THUMBNAIL_SIZE: ${MATTERMOST_GENERATED_THUMBNAIL_SIZE:-1536x1024}
@@ -1937,6 +1953,7 @@ services:
     restart: unless-stopped
 
   category-cluster-worker:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
@@ -1990,6 +2007,7 @@ services:
     <<: *category-impact-worker-base
 
   category-adjudication-worker:
+    <<: *app-hardening
     build: .
     environment:
       <<: [*db-env, *langfuse-env]
@@ -2030,6 +2048,7 @@ services:
     restart: unless-stopped
 
   category-briefing-worker:
+    <<: *app-hardening
     build: .
     environment:
       <<: [*db-env, *llm-env, *langfuse-env]
@@ -2075,6 +2094,7 @@ services:
     restart: unless-stopped
 
   cross-category-adjudication-worker:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
@@ -2146,6 +2166,7 @@ services:
     restart: unless-stopped
 
   api:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
@@ -2193,12 +2214,14 @@ services:
         condition: service_completed_successfully
 
   worker:
+    <<: *app-hardening
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://signalrss:signalrss@postgres:5432/signalrss}
       WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-300}
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-50}
       INGEST_WINDOW_DAYS: ${INGEST_WINDOW_DAYS:-7}
+      FEED_MAX_BYTES: ${FEED_MAX_BYTES:-10485760}
     command: ["npm", "run", "worker"]
     depends_on:
       postgres:
