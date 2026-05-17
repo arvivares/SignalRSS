@@ -76,6 +76,19 @@ One-shot services such as `backfill`, `classifier`, `clusterer`, `impact-scorer`
 13. `mattermost-worker` publishes configured briefs after deduplication.
 14. `api` exposes current state through pages, JSON endpoints, and RSS 2.0 feeds.
 
+## Architectural boundaries
+
+SignalRSS keeps long-running responsibilities separated so failures are isolated and queues can be drained independently:
+
+- Ingestion workers never call LLMs. They only fetch, normalize, and store articles.
+- Classification and clustering own semantic placement. They do not publish.
+- Impact and briefing workers own expensive model calls and provider fallback behavior.
+- Adjudication workers own duplicate decisions and merge eligibility.
+- Mattermost publishing is a final side effect and must stay downstream from duplicate clearance.
+- The API reads current state and records explicit `/news` swipe actions; it should not perform background pipeline work.
+
+When adding new features, prefer extending one boundary instead of adding cross-cutting behavior inside several workers. For example, a new publication target should reuse briefing and duplicate-clearance state instead of creating its own scoring or clustering path.
+
 ## Impact and briefing pipeline
 
 Impact scoring and briefing generation use provider fallback chains. Free or lower-cost providers are attempted first, and OpenAI is kept as the paid final fallback.
@@ -171,6 +184,8 @@ docker compose logs -f category-briefing-worker
 docker compose logs -f mattermost-worker
 ```
 
+The database is the source of truth for queue state. Logs explain recent behavior, but status tables such as `cluster_impact_jobs`, `cluster_briefings`, `llm_request_logs`, and `mattermost_notifications` should be used to decide whether a queue is stuck or simply waiting on cooldown.
+
 ## Local commands
 
 Start the stack:
@@ -201,3 +216,7 @@ docker compose config --quiet
 ## Version policy
 
 Use stable service and library versions intentionally. PostgreSQL major versions require explicit migration planning because data directories are tied to the major version. The current database image is `pgvector/pgvector:pg18`.
+
+## Public repository policy
+
+The repository is public. Keep `.env`, generated images, SQL dumps, logs, and provider experiments out of Git. Run `npm run validate` before committing to execute tests and the tracked-file public repository scan.

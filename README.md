@@ -219,6 +219,12 @@ npm run maintenance:cleanup-low-confidence
 
 ## Development checks
 
+Run the full local validation gate:
+
+```bash
+npm run validate
+```
+
 Validate JavaScript syntax for changed files:
 
 ```bash
@@ -242,4 +248,9 @@ git diff --stat
 
 ## More documentation
 
-Read [docs/architecture.md](docs/architecture.md) for the service flow, data model, and Docker startup sequence.
+Read:
+
+- [docs/architecture.md](docs/architecture.md) for the service flow, data model, and Docker startup sequence.
+- [docs/configuration.md](docs/configuration.md) for environment variables and operational tuning.
+- [docs/operations.md](docs/operations.md) for queue checks, temporary drains, Mattermost retries, and public-repo checks.
+- [docs/security.md](docs/security.md) and [SECURITY.md](SECURITY.md) for security posture and vulnerability reporting.
