@@ -64,8 +64,19 @@ Prompts are maintained in code, but language and category guidance are configura
 | `LLM_*_RPM` | Provider-specific request pacing. |
 | `LLM_*_IMPACT_MAX_BATCH_SIZE` | Provider-specific impact batch cap. |
 | `LLM_*_BRIEFING_MAX_BATCH_SIZE` | Provider-specific briefing batch cap. |
+| `LLM_MODEL_POLICY_<PROVIDER>_<MODEL>` | Per-model override for enablement, RPM, quotas, and batch caps. |
 
 Prefer lowering provider-specific batch size before lowering global throughput. That keeps reliable providers useful while protecting weaker ones from large payloads.
+
+Per-model overrides use comma-separated `key=value` pairs. The environment variable name is derived from provider and model by replacing non-alphanumeric characters with `_` and uppercasing them.
+
+Example:
+
+```bash
+LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=true,briefing_enabled=false
+```
+
+Supported keys are `enabled`, `impact_enabled`, `briefing_enabled`, `rpm`, `tpm`, `tpd`, `rpd`, `impact_max_batch_size`, and `briefing_max_batch_size`.
 
 ## Cross-category deduplication
 

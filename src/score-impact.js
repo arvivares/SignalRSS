@@ -10,7 +10,7 @@ import {
   recordLlmSuccess,
   reserveLlmProviderSlot,
 } from './llm-cooldowns.js';
-import { maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
+import { llmProviderEnabled, maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
 import { logLlmRequest } from './llm-request-log.js';
 import {
   parseJsonObject,
@@ -354,7 +354,12 @@ function fallbackSpecs() {
       provider: entry.slice(0, separator),
       model: entry.slice(separator + 1),
     };
-  }).filter((spec) => spec.provider && spec.model);
+  }).filter((spec) => spec.provider && spec.model)
+    .filter((spec) => llmProviderEnabled({
+      provider: spec.provider,
+      model: spec.model,
+      operation: 'impact_scoring',
+    }));
 }
 
 function usageFromOpenRouter(body = {}) {
@@ -948,7 +953,7 @@ async function cleanupStaleImpactRuns() {
   );
 }
 
-async function enqueueImpactJobs() {
+export async function enqueueImpactJobs() {
   const params = [
     config.embeddingModel,
     config.impactWindowHours,

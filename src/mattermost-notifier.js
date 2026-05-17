@@ -13,7 +13,7 @@ import { shutdownLangfuseTracing } from './langfuse.js';
 import { elapsedMs, nowMs } from './timing-utils.js';
 import { assertSafeHttpUrl } from './url-security.js';
 import { fetchWithTimeout } from './http-utils.js';
-import { redactSecrets } from './log-utils.js';
+import { redactSecrets, safeErrorMessage } from './log-utils.js';
 
 function normalizeLevels(levels) {
   const allowed = new Set(['P0', 'P1', 'P2', 'P3']);
@@ -25,18 +25,39 @@ async function postToMattermost(briefing, destination) {
   const timings = {};
   const flowStart = nowMs();
   const payloadStart = nowMs();
-  const { payload, thumbnailUrl } = await mattermostPayload(briefing, destination, timings);
+  let payload;
+  let thumbnailUrl;
+  try {
+    ({ payload, thumbnailUrl } = await mattermostPayload(briefing, destination, timings));
+  } catch (error) {
+    timings.payload_build_ms = elapsedMs(payloadStart);
+    timings.total_wall_ms = elapsedMs(flowStart);
+    const wrapped = new Error(`mattermost_payload_failed: ${safeErrorMessage(error)}`);
+    wrapped.cause = error;
+    wrapped.signalsrssTimings = timings;
+    throw wrapped;
+  }
   timings.payload_build_ms = elapsedMs(payloadStart);
 
   const postStart = nowMs();
-  const response = await fetchWithTimeout(config.mattermostWebhookUrl, {
-    method: 'POST',
-    allowHttp: false,
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetchWithTimeout(config.mattermostWebhookUrl, {
+      method: 'POST',
+      allowHttp: false,
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    timings.mattermost_post_ms = elapsedMs(postStart);
+    timings.total_wall_ms = elapsedMs(flowStart);
+    const wrapped = new Error(`mattermost_webhook_failed: ${safeErrorMessage(error)}`);
+    wrapped.cause = error;
+    wrapped.signalsrssTimings = timings;
+    throw wrapped;
+  }
   timings.mattermost_post_ms = elapsedMs(postStart);
 
   const responseReadStart = nowMs();
@@ -139,7 +160,12 @@ export async function runMattermostNotifications({ closeConnections = true } = {
             briefing,
             hash: destination.hash,
             status: 'failed',
-            error: error.message,
+            error: safeErrorMessage(error),
+            payload: error.signalsrssTimings ? {
+              signalrss_diagnostics: {
+                timings_ms: error.signalsrssTimings,
+              },
+            } : undefined,
           });
           failed += 1;
         }

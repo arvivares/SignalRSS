@@ -1,20 +1,8 @@
 import { config } from './config.js';
 import { pool } from './db.js';
+import { llmKnownLimit } from './llm-provider-policy.js';
 
 const GLOBAL_OPERATION = 'global';
-
-const KNOWN_LIMITS = {
-  gemini: {
-    'gemini-2.5-flash': { rpm: config.llmGeminiRpm },
-    'gemini-3-flash-preview': { rpm: config.llmGeminiRpm },
-    'gemma-4-31b-it': { rpm: config.llmGeminiRpm },
-  },
-  groq: {
-    'openai/gpt-oss-120b': { rpm: 30, tpm: 8000, tpd: 200000 },
-    'openai/gpt-oss-20b': { rpm: 30, tpm: 8000, tpd: 200000 },
-    'llama-3.3-70b-versatile': { rpm: 30, tpm: 12000, tpd: 100000 },
-  },
-};
 
 let ensured = false;
 
@@ -45,22 +33,7 @@ async function ensureCooldownTable() {
 }
 
 function knownLimit(provider, model) {
-  if (provider === 'sambanova' && model === 'gpt-oss-120b') {
-    return { rpm: config.llmSambanovaFreeRpm, tpd: 200000 };
-  }
-  if (provider === 'mistral' && model === 'mistral-small-latest') {
-    return { rpm: config.llmMistralRpm };
-  }
-  if (provider === 'llmrack') {
-    return { rpm: config.llmRackRpm, tpd: config.llmRackTokensPerDay };
-  }
-  if (provider === 'github') {
-    return { rpm: config.llmGithubLowRpm };
-  }
-  if (provider === 'openrouter' && String(model).endsWith(':free')) {
-    return { rpm: config.llmOpenRouterFreeRpm, rpd: config.llmOpenRouterFreeRpd };
-  }
-  return KNOWN_LIMITS[provider]?.[model] || null;
+  return llmKnownLimit({ provider, model });
 }
 
 function spacingMs(provider, model) {

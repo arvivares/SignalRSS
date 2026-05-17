@@ -58,6 +58,7 @@ x-llm-env: &llm-env
   LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE: ${LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE:-2}
   LLM_OPENROUTER_FREE_RPM: ${LLM_OPENROUTER_FREE_RPM:-20}
   LLM_OPENROUTER_FREE_RPD: ${LLM_OPENROUTER_FREE_RPD:-50}
+  LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B: ${LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B:-impact_enabled=true,briefing_enabled=false}
   LLM_MIN_COOLDOWN_MS: ${LLM_MIN_COOLDOWN_MS:-2000}
   LLM_MAX_COOLDOWN_MS: ${LLM_MAX_COOLDOWN_MS:-86400000}
   LLM_RATE_LIMIT_COOLDOWN_MS: ${LLM_RATE_LIMIT_COOLDOWN_MS:-60000}
@@ -86,6 +87,7 @@ x-category-impact-worker-base: &category-impact-worker-base
     IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,github:openai/gpt-4.1-mini,github:openai/gpt-4o-mini,groq:openai/gpt-oss-120b,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:openai/gpt-oss-120b:free,openrouter:nvidia/nemotron-3-super-120b-a12b:free,sambanova:gpt-oss-120b,gemini:gemini-2.5-flash,cloudflare:@cf/openai/gpt-oss-120b,cerebras:llama3.1-8b,llmrack:qwen-2.5-7b,openai:gpt-5-nano}
     IMPACT_BATCH_SIZE: ${CATEGORY_IMPACT_BATCH_SIZE:-4}
     IMPACT_BATCHES_PER_TICK: ${CATEGORY_IMPACT_BATCHES_PER_TICK:-5}
+    CATEGORY_IMPACT_CATEGORIES_PER_TICK: ${CATEGORY_IMPACT_CATEGORIES_PER_TICK:-3}
     IMPACT_POLL_INTERVAL_SECONDS: ${CATEGORY_IMPACT_POLL_INTERVAL_SECONDS:-240}
     IMPACT_WINDOW_HOURS: ${IMPACT_WINDOW_HOURS:-168}
     IMPACT_MIN_PUBLISHED_AT: ${IMPACT_MIN_PUBLISHED_AT:-}

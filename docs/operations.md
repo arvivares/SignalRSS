@@ -83,6 +83,14 @@ Common reasons:
 
 Use OpenAI drain workers only as a deliberate cost tradeoff.
 
+If one provider/model is noisy, disable only that operation instead of removing the provider completely. For example:
+
+```bash
+LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=true,briefing_enabled=false
+```
+
+This keeps useful impact capacity while removing a bad briefing fallback.
+
 ## Mattermost publishing
 
 Mattermost is downstream from duplicate checks. `mattermost-worker` should only post after:

@@ -1116,6 +1116,7 @@ export const config = {
   impactMaxOutputTokens: numberEnv('IMPACT_MAX_OUTPUT_TOKENS', 2200),
   impactBatchSize: Number(process.env.IMPACT_BATCH_SIZE || 25),
   impactBatchesPerTick: Number(process.env.IMPACT_BATCHES_PER_TICK || 1),
+  categoryImpactCategoriesPerTick: numberEnv('CATEGORY_IMPACT_CATEGORIES_PER_TICK', 3),
   impactPollIntervalSeconds: Number(process.env.IMPACT_POLL_INTERVAL_SECONDS || 300),
   impactWindowHours: Number(process.env.IMPACT_WINDOW_HOURS || 168),
   impactMinPublishedAt: process.env.IMPACT_MIN_PUBLISHED_AT || '',

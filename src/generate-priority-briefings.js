@@ -11,7 +11,7 @@ import {
   recordLlmSuccess,
   reserveLlmProviderSlot,
 } from './llm-cooldowns.js';
-import { maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
+import { llmProviderEnabled, maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
 import {
   assessEvidenceQuality,
   evidenceTextForCluster,
@@ -328,7 +328,12 @@ function fallbackSpecs(settings) {
       model: entry.slice(separator + 1),
     };
   }).filter((spec) => spec.provider && spec.model)
-    .filter((spec) => spec.provider !== 'openai' || allowOpenAi);
+    .filter((spec) => spec.provider !== 'openai' || allowOpenAi)
+    .filter((spec) => llmProviderEnabled({
+      provider: spec.provider,
+      model: spec.model,
+      operation: 'briefing_generation',
+    }));
 }
 
 function fallbackSpecLabel(settings) {
