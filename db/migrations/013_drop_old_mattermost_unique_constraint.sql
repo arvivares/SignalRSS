@@ -1,0 +1,2 @@
+ALTER TABLE mattermost_notifications
+  DROP CONSTRAINT IF EXISTS mattermost_notifications_cluster_id_locale_briefing_type_de_key;

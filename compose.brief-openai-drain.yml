@@ -1,0 +1,17 @@
+services:
+  category-briefing-openai-drain:
+    extends:
+      file: docker-compose.yml
+      service: category-briefing-worker
+    environment:
+      BRIEFING_MODEL_FALLBACKS: openai:gpt-5-nano
+      BRIEFING_OPENAI_FALLBACK_LEVELS: P0,P1,P2,P3
+      CATEGORY_BRIEFING_BATCHES_PER_TICK: 5
+      CATEGORY_BRIEFING_CONCURRENCY: 1
+      CATEGORY_BRIEFING_FREE_BATCH_SIZE: 0
+      CATEGORY_BRIEFING_OPENAI_BATCH_SIZE: 10
+      P0_BRIEFING_POLL_INTERVAL_SECONDS: 30
+      P1_BRIEFING_POLL_INTERVAL_SECONDS: 30
+      P2_BRIEFING_POLL_INTERVAL_SECONDS: 30
+      P3_BRIEFING_POLL_INTERVAL_SECONDS: 30
+    restart: "no"

@@ -1,0 +1,72 @@
+[
+  {
+    "slug": "artificial-intelligence",
+    "name": "Artificial Intelligence",
+    "description": "AI models, generative AI, machine learning, agents, robotics intelligence, AI infrastructure, AI products, AI safety, and applied AI."
+  },
+  {
+    "slug": "cybersecurity",
+    "name": "Cybersecurity",
+    "description": "Security incidents, vulnerabilities, malware, ransomware, privacy attacks, threat intelligence, identity security, and defensive security tools."
+  },
+  {
+    "slug": "cloud-infrastructure",
+    "name": "Cloud Infrastructure",
+    "description": "Cloud infrastructure that runs digital services: public cloud provider services, data centers, cloud regions, compute, storage, networking, CDN, edge infrastructure, Kubernetes, containers, serverless platforms, DevOps, SRE, observability, infrastructure automation, deployment platforms, cloud migration, platform reliability, outages, capacity, and physical data center operations."
+  },
+  {
+    "slug": "semiconductors",
+    "name": "Semiconductors",
+    "description": "Chips, processors, GPUs, memory, foundries, semiconductor manufacturing, lithography, supply chains, and chip design."
+  },
+  {
+    "slug": "software-development",
+    "name": "Software Development",
+    "description": "Programming languages, developer tools, open source, GitHub projects, software engineering, APIs, frameworks, and technical releases."
+  },
+  {
+    "slug": "consumer-electronics",
+    "name": "Consumer Electronics",
+    "description": "Smartphones, laptops, tablets, wearables, gadgets, home electronics, reviews, and consumer device launches. Exclude dedicated gaming news, video games, consoles, esports, and game platform stories unless the article is mainly about general-purpose consumer hardware."
+  },
+  {
+    "slug": "gaming",
+    "name": "Gaming",
+    "description": "Video games and gaming technology: game releases, studios, publishers, consoles, gaming platforms, PC gaming, cloud gaming, Steam, PlayStation, Xbox, Nintendo, esports, game engines used for games, gaming hardware when the primary story is gaming, virtual worlds, and major business or policy news about the games industry. Exclude generic consumer electronics unless gaming is the main angle."
+  },
+  {
+    "slug": "enterprise-technology",
+    "name": "Enterprise Technology",
+    "description": "Enterprise software, SaaS, business platforms, IT procurement, digital transformation, workplace technology, and B2B technology markets."
+  },
+  {
+    "slug": "startups-venture-capital",
+    "name": "Startups and Venture Capital",
+    "description": "Technology startups, funding rounds, venture capital, acquisitions, IPOs, accelerators, founders, and emerging technology companies."
+  },
+  {
+    "slug": "policy-regulation",
+    "name": "Policy and Regulation",
+    "description": "Technology regulation, antitrust, privacy law, AI governance, export controls, digital markets, government policy, and legal disputes."
+  },
+  {
+    "slug": "science-research",
+    "name": "Science and Research",
+    "description": "Scientific computing, research breakthroughs, space technology, biotech technology, academic research, labs, and advanced R&D."
+  },
+  {
+    "slug": "automotive-mobility",
+    "name": "Automotive and Mobility",
+    "description": "Automotive and mobility technology: passenger vehicles, electric vehicles, charging infrastructure, automotive batteries, ADAS, autonomous driving, connected cars, in-car software, vehicle safety systems, vehicle manufacturing, public transit technology, micromobility, logistics vehicles, drones used for transport, and mobility platforms. Focus on transportation, vehicles, fleets, charging, and road mobility."
+  },
+  {
+    "slug": "fintech-crypto",
+    "name": "Fintech",
+    "description": "Financial technology excluding pure crypto/web3: payments, digital banking, banking software, lending, cards, remittances, trading and brokerage platforms, financial data infrastructure, wealth technology, insurance technology, compliance technology, and financial infrastructure. Exclude stories mainly about cryptocurrencies, blockchains, tokens, wallets, exchanges, DeFi, NFTs, or web3 protocols unless the primary angle is mainstream banking, payments, or regulated financial infrastructure."
+  },
+  {
+    "slug": "crypto-web3",
+    "name": "Crypto and Web3",
+    "description": "Cryptocurrency and web3 technology: Bitcoin, Ethereum, Solana, stablecoins, blockchain protocols, crypto exchanges, wallets, custody, DeFi, NFTs, tokenization, DAOs, smart contracts, on-chain infrastructure, crypto regulation, crypto security, mining, staking, and web3 applications. Exclude generic finance, banking, payments, stock-market, or venture-capital stories unless crypto or blockchain is the primary subject."
+  }
+]
