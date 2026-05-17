@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { pool } from './db.js';
 import { filterBriefingRows } from './briefing-exclusions.js';
+import { configuredLlmModelPolicies } from './llm-provider-policy.js';
 
 export async function buildFeedStats() {
   const [{ rows: totals }, { rows: countries }, { rows: articles }] = await Promise.all([
@@ -472,5 +473,161 @@ export async function buildImpactStats({ category = 'artificial-intelligence', h
     hours,
     ...totals[0],
     recent_runs: runs,
+  };
+}
+
+function healthStatus({ impactPending, impactFailed, briefingPending, staleBriefingClaims, mattermostFailed, activeCooldowns }) {
+  if (impactFailed > 0 || staleBriefingClaims > 0) return 'degraded';
+  if (impactPending > 250 || briefingPending > 250 || mattermostFailed > 25) return 'degraded';
+  if (activeCooldowns > 10) return 'warning';
+  return 'ok';
+}
+
+export async function buildOpsHealth() {
+  const [
+    { rows: impactRows },
+    { rows: briefingRows },
+    { rows: staleBriefingClaimRows },
+    { rows: cooldownRows },
+    { rows: providerRows },
+    { rows: mattermostRows },
+    { rows: feedRows },
+  ] = await Promise.all([
+    pool.query(`
+      SELECT
+        tc.slug AS category,
+        j.status,
+        count(*)::int AS jobs,
+        min(j.updated_at) AS oldest_updated_at
+      FROM cluster_impact_jobs j
+      JOIN story_clusters sc ON sc.id = j.cluster_id
+      JOIN topic_categories tc ON tc.id = sc.category_id
+      GROUP BY tc.slug, j.status
+      ORDER BY tc.slug, j.status
+    `),
+    pool.query(`
+      SELECT
+        tc.slug AS category,
+        cis.impact_level,
+        count(*) FILTER (
+          WHERE cb.cluster_id IS NULL
+             OR cb.updated_at < sc.updated_at
+             OR cb.updated_at < cis.updated_at
+        )::int AS pending
+      FROM story_clusters sc
+      JOIN topic_categories tc ON tc.id = sc.category_id
+      JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
+      LEFT JOIN cluster_briefings cb
+        ON cb.cluster_id = sc.id
+        AND cb.locale = 'es'
+        AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
+      WHERE sc.latest_published_at >= NOW() - INTERVAL '7 days'
+        AND ($1::timestamptz IS NULL OR sc.latest_published_at >= $1::timestamptz)
+      GROUP BY tc.slug, cis.impact_level
+      HAVING count(*) FILTER (
+        WHERE cb.cluster_id IS NULL
+           OR cb.updated_at < sc.updated_at
+           OR cb.updated_at < cis.updated_at
+      ) > 0
+      ORDER BY pending DESC, tc.slug, cis.impact_level
+    `, [config.briefingMinPublishedAt || null]),
+    pool.query(`
+      SELECT
+        briefing_type,
+        count(*)::int AS claims,
+        count(*) FILTER (
+          WHERE locked_at < NOW() - ($1::int * INTERVAL '1 minute')
+        )::int AS stale_claims,
+        min(locked_at) AS oldest_locked_at
+      FROM cluster_briefing_claims
+      GROUP BY briefing_type
+      ORDER BY claims DESC, briefing_type
+    `, [config.briefingClaimStaleMinutes]).catch(() => ({ rows: [] })),
+    pool.query(`
+      SELECT provider, model, operation, reason, cooldown_until, failure_count, last_error
+      FROM llm_provider_cooldowns
+      WHERE cooldown_until > NOW()
+      ORDER BY cooldown_until DESC
+      LIMIT 30
+    `).catch(() => ({ rows: [] })),
+    pool.query(`
+      SELECT
+        operation,
+        provider,
+        requested_model,
+        count(*)::int AS requests,
+        count(*) FILTER (WHERE status = 'ok')::int AS ok,
+        count(*) FILTER (WHERE status <> 'ok')::int AS failed,
+        round(avg(latency_ms))::int AS avg_latency_ms
+      FROM llm_request_logs
+      WHERE created_at >= NOW() - INTERVAL '1 hour'
+      GROUP BY operation, provider, requested_model
+      ORDER BY failed DESC, requests DESC
+      LIMIT 40
+    `),
+    pool.query(`
+      SELECT
+        status,
+        coalesce(error, '') AS error,
+        count(*)::int AS notifications,
+        max(updated_at) AS last_updated_at
+      FROM mattermost_notifications
+      WHERE updated_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY status, coalesce(error, '')
+      ORDER BY notifications DESC
+      LIMIT 20
+    `),
+    pool.query(`
+      SELECT
+        count(*) FILTER (WHERE enabled)::int AS enabled,
+        count(*) FILTER (WHERE enabled AND last_success_at >= NOW() - INTERVAL '24 hours')::int AS successful_24h,
+        count(*) FILTER (WHERE enabled AND last_error IS NOT NULL AND last_success_at < NOW() - INTERVAL '24 hours')::int AS stale_or_failing
+      FROM feeds
+    `),
+  ]);
+
+  const briefingPendingRows = filterBriefingRows(briefingRows);
+  const impactTotals = impactRows.reduce((totals, row) => {
+    totals[row.status] = (totals[row.status] || 0) + Number(row.jobs || 0);
+    return totals;
+  }, {});
+  const briefingPending = briefingPendingRows.reduce((total, row) => total + Number(row.pending || 0), 0);
+  const staleBriefingClaims = staleBriefingClaimRows.reduce((total, row) => total + Number(row.stale_claims || 0), 0);
+  const mattermostFailed = mattermostRows
+    .filter((row) => row.status === 'failed')
+    .reduce((total, row) => total + Number(row.notifications || 0), 0);
+  const status = healthStatus({
+    impactPending: Number(impactTotals.pending || 0),
+    impactFailed: Number(impactTotals.failed || 0),
+    briefingPending,
+    staleBriefingClaims,
+    mattermostFailed,
+    activeCooldowns: cooldownRows.length,
+  });
+
+  return {
+    status,
+    generatedAt: new Date(),
+    queues: {
+      impact: {
+        totals: impactTotals,
+        byCategory: impactRows,
+      },
+      briefing: {
+        pending: briefingPending,
+        byCategory: briefingPendingRows,
+        claims: staleBriefingClaimRows,
+      },
+    },
+    providers: {
+      policies: [
+        ...configuredLlmModelPolicies('impact_scoring'),
+        ...configuredLlmModelPolicies('briefing_generation'),
+      ],
+      activeCooldowns: cooldownRows,
+      lastHour: providerRows,
+    },
+    mattermost: mattermostRows,
+    feeds: feedRows[0] || {},
   };
 }

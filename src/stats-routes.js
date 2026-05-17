@@ -4,6 +4,7 @@ import {
   buildClusterStats,
   buildFeedStats,
   buildImpactStats,
+  buildOpsHealth,
 } from './stats-service.js';
 import { sendJson } from './response-utils.js';
 import { DEFAULT_CATEGORY, boundedIntParam } from './route-utils.js';
@@ -39,6 +40,12 @@ export async function handleStatsRoutes({ requestUrl, res }) {
       hours: boundedIntParam(requestUrl.searchParams, 'hours', 24, 168),
     });
     sendJson(res, stats);
+    return true;
+  }
+
+  if (requestUrl.pathname === '/api/ops/health') {
+    const stats = await buildOpsHealth();
+    sendJson(res, stats, stats.status === 'ok' ? 200 : 503);
     return true;
   }
 

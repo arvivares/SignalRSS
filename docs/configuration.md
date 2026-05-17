@@ -78,6 +78,8 @@ LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=true,briefing_enabled=fal
 
 Supported keys are `enabled`, `impact_enabled`, `briefing_enabled`, `rpm`, `tpm`, `tpd`, `rpd`, `impact_max_batch_size`, and `briefing_max_batch_size`.
 
+The effective policy is visible at `/api/ops/health` under `providers.policies`.
+
 ## Cross-category deduplication
 
 | Variable | Purpose |

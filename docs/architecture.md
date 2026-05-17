@@ -165,6 +165,7 @@ Generated thumbnails are local runtime artifacts and should not be committed.
 | `/api/news` | Queue data for the `/news` UI. |
 | `/api/news/swipe` | Records `/news` swipe decisions. |
 | `/api/news/interested` | Lists selected stories. |
+| `/api/ops/health` | Operational pipeline health for queues, providers, cooldowns, Mattermost, and feeds. |
 | `/feeds/stats` | Feed health and ingestion stats. |
 | `/categories/stats` | Category stats. |
 | `/classification/stats` | Classification stats. |

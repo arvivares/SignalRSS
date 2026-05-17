@@ -47,6 +47,14 @@ http://127.0.0.1:3000/
 
 The dashboard should show feed health, pending work by category, provider outcomes, Mattermost posts, and `/news` swipe summaries.
 
+Use the operational health endpoint for automation:
+
+```bash
+curl -sS http://127.0.0.1:3000/api/ops/health
+```
+
+It returns queue totals, stale briefing claims, active provider cooldowns, last-hour provider outcomes, recent Mattermost status, and feed health. A non-`ok` status returns HTTP `503` so scripts can fail fast.
+
 ## Understand the queues
 
 The normal order is:

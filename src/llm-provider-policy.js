@@ -208,6 +208,35 @@ export function llmModelPolicy({ provider, model }) {
   };
 }
 
+function fallbackSpecs(entries = []) {
+  return entries.map((entry) => {
+    const separator = entry.indexOf(':');
+    if (separator < 1) return { provider: 'openai', model: entry };
+    return {
+      provider: entry.slice(0, separator),
+      model: entry.slice(separator + 1),
+    };
+  }).filter((spec) => spec.provider && spec.model);
+}
+
+export function configuredLlmModelPolicies(operation) {
+  const fallbacks = operation === 'briefing_generation'
+    ? config.briefingModelFallbacks
+    : config.impactModelFallbacks;
+
+  return fallbackSpecs(fallbacks).map((spec, index) => {
+    const policy = llmModelPolicy(spec);
+    return {
+      index,
+      operation,
+      provider: spec.provider,
+      model: spec.model,
+      enabled: llmProviderEnabled({ ...spec, operation }),
+      policy,
+    };
+  });
+}
+
 export function llmProviderEnabled({ provider, model, operation }) {
   const policy = llmModelPolicy({ provider, model });
   if (!policy.enabled) return false;
