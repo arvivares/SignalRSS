@@ -1130,6 +1130,8 @@ export const config = {
   llmMaxCooldownMs: numberEnv('LLM_MAX_COOLDOWN_MS', 24 * 60 * 60 * 1000),
   llmRateLimitCooldownMs: numberEnv('LLM_RATE_LIMIT_COOLDOWN_MS', 60000),
   llmDailyRateLimitCooldownMs: numberEnv('LLM_DAILY_RATE_LIMIT_COOLDOWN_MS', 12 * 60 * 60 * 1000),
+  llmDailyBudgetSafetyRatio: numberEnv('LLM_DAILY_BUDGET_SAFETY_RATIO', 0.95),
+  llmDailyBudgetCooldownMs: numberEnv('LLM_DAILY_BUDGET_COOLDOWN_MS', 60 * 60 * 1000),
   llmPayloadTooLargeCooldownMs: numberEnv('LLM_PAYLOAD_TOO_LARGE_COOLDOWN_MS', 10 * 60 * 1000),
   llmTransportErrorCooldownMs: numberEnv('LLM_TRANSPORT_ERROR_COOLDOWN_MS', 120000),
   llmBadResponseCooldownMs: numberEnv('LLM_BAD_RESPONSE_COOLDOWN_MS', 120000),

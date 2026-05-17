@@ -6,6 +6,7 @@ process.env.LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE = '1';
 process.env.LLM_GITHUB_IMPACT_MAX_BATCH_SIZE = '2';
 process.env.LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE = '1';
 process.env.LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE = '4';
+process.env.CATEGORY_BRIEFING_FREE_BATCH_SIZE = '5';
 process.env.MATTERMOST_CATEGORY_SLUGS = 'artificial-intelligence,artificial-intelligence,cloud-infrastructure';
 process.env.MATTERMOST_CHANNELS_BY_CATEGORY = 'artificial-intelligence:news-ai,cloud-infrastructure:news-cloud';
 process.env.MATTERMOST_WEBHOOK_URL = 'https://mattermost.example/hooks/test';
@@ -15,6 +16,8 @@ const { parseJsonObject } = await import('../src/llm-utils.js');
 const { llmProviderEnabled, maxBatchSizeForLlmProvider } = await import('../src/llm-provider-policy.js');
 const { mattermostDestinations } = await import('../src/mattermost-destinations.js');
 const { mattermostFailureRows } = await import('../src/dashboard-page.js');
+const { splitCooldownRows, splitProviderRows } = await import('../src/stats-service.js');
+const { batchSizeForBriefingProviders } = await import('../src/briefing-batch-policy.js');
 
 test('briefing exclusions remove configured category/priority pairs', () => {
   assert.equal(isBriefingExcluded('consumer-electronics', 'P3'), true);
@@ -53,6 +56,42 @@ test('LLM policy disables noisy impact providers while keeping safe briefing fal
     model: 'qwen-2.5-7b',
     operation: 'briefing_generation',
   }), false);
+});
+
+test('ops health separates active provider cooldowns from historical disabled cooldowns', () => {
+  const policies = [
+    { operation: 'impact_scoring', provider: 'nvidia', model: 'openai/gpt-oss-120b', enabled: true },
+    { operation: 'impact_scoring', provider: 'cloudflare', model: '@cf/openai/gpt-oss-120b', enabled: false },
+  ];
+  const cooldowns = splitCooldownRows([
+    { operation: 'impact_scoring', provider: 'nvidia', model: 'openai/gpt-oss-120b' },
+    { operation: 'impact_scoring', provider: 'cloudflare', model: '@cf/openai/gpt-oss-120b' },
+    { operation: 'briefing_generation', provider: 'old-provider', model: 'old-model' },
+  ], policies);
+
+  assert.equal(cooldowns.active.length, 1);
+  assert.equal(cooldowns.inactiveHistorical.length, 2);
+  assert.equal(cooldowns.inactiveHistorical[0].enabled, false);
+
+  const providerRows = splitProviderRows([
+    { operation: 'impact_scoring', provider: 'nvidia', requested_model: 'openai/gpt-oss-120b' },
+    { operation: 'impact_scoring', provider: 'cloudflare', requested_model: '@cf/openai/gpt-oss-120b' },
+  ], policies);
+  assert.deepEqual(providerRows.map((row) => row.enabled), [true, false]);
+});
+
+test('briefing worker keeps useful free-provider batch size when unbounded providers are available', () => {
+  assert.equal(batchSizeForBriefingProviders([
+    { provider: 'mistral', model: 'mistral-small-latest' },
+    { provider: 'github', model: 'meta/meta-llama-3.1-8b-instruct' },
+    { provider: 'openai', model: 'gpt-5-nano' },
+  ]), 5);
+
+  assert.equal(batchSizeForBriefingProviders([
+    { provider: 'github', model: 'meta/meta-llama-3.1-8b-instruct' },
+    { provider: 'openrouter', model: 'openai/gpt-oss-120b:free' },
+    { provider: 'openai', model: 'gpt-5-nano' },
+  ]), 1);
 });
 
 test('model JSON parsing accepts wrapped JSON but rejects empty invalid responses', () => {

@@ -31,6 +31,8 @@ The expected long-running services are:
 
 Avoid leaving temporary drain services running after a backlog is cleared.
 
+Legacy one-shot and category-specific workers remain behind Compose profiles for manual recovery only. They are not part of the nominal stack; prefer the generic `category-*` workers unless you are intentionally replaying an old maintenance path.
+
 ## Check readiness
 
 Use the API readiness endpoint:
@@ -53,7 +55,7 @@ Use the operational health endpoint for automation:
 curl -sS http://127.0.0.1:3000/api/ops/health
 ```
 
-It returns queue totals, stale briefing claims, active provider cooldowns, last-hour provider outcomes, recent Mattermost status, and feed health. A non-`ok` status returns HTTP `503` so scripts can fail fast.
+It returns queue totals, stale briefing claims, active provider cooldowns, historical cooldowns for disabled providers, last-hour provider outcomes, database table health, recent Mattermost status, and feed health. A non-`ok` status returns HTTP `503` so scripts can fail fast.
 
 ## Understand the queues
 
@@ -85,11 +87,14 @@ Common reasons:
 
 - Provider daily quota exhausted.
 - Provider RPM/TPM limit hit.
+- Provider was skipped by the preventive daily budget guard.
 - Payload too large for a specific provider.
 - Model returned invalid JSON.
 - Claim is stale and waiting for retry.
 
 Use OpenAI drain workers only as a deliberate cost tradeoff.
+
+If `/api/ops/health` shows cooldowns under `inactiveHistoricalCooldowns`, they are not blocking the nominal fallback chain. They are recent history from providers/models that are currently disabled or removed from the active fallback list.
 
 If one provider/model is noisy, disable only that operation instead of removing the provider completely. For example:
 
@@ -98,6 +103,14 @@ LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=true,briefing_enabled=fal
 ```
 
 This keeps useful impact capacity while removing a bad briefing fallback.
+
+## Database maintenance
+
+The home dashboard and `/api/ops/health` expose the tables with the highest dead-row counts from `pg_stat_user_tables`. Moderate dead rows are normal in a constantly updating queue system. If the same table stays high or query latency increases, run maintenance from Postgres:
+
+```bash
+docker.exe exec signalrss-postgres-1 psql -U signalrss -d signalrss -c "VACUUM ANALYZE;"
+```
 
 ## Mattermost publishing
 

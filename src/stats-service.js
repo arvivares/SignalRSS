@@ -119,6 +119,13 @@ export async function buildDashboardMetrics() {
           tc.slug AS category,
           count(*) FILTER (WHERE j.status IN ('pending', 'running'))::int AS impact_pending,
           count(*) FILTER (WHERE j.status = 'running')::int AS impact_running,
+          count(*) FILTER (
+            WHERE j.status = 'running'
+              AND (
+                j.locked_at IS NULL
+                OR j.locked_at < NOW() - ($2::int * INTERVAL '1 minute')
+              )
+          )::int AS impact_running_stale,
           count(*) FILTER (WHERE j.status = 'failed')::int AS impact_failed
         FROM cluster_impact_jobs j
         JOIN story_clusters sc ON sc.id = j.cluster_id
@@ -151,7 +158,7 @@ export async function buildDashboardMetrics() {
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
       GROUP BY tc.slug, ij.impact_pending, ij.impact_running, ij.impact_failed
       ORDER BY briefing_pending DESC, impact_pending DESC, tc.slug
-    `, [config.impactMinPublishedAt || config.briefingMinPublishedAt || null]),
+    `, [config.impactMinPublishedAt || config.briefingMinPublishedAt || null, config.impactJobStaleMinutes]),
     pool.query(`
       SELECT
         tc.slug AS category,
@@ -584,8 +591,67 @@ export async function buildImpactStats({ category = 'artificial-intelligence', h
   };
 }
 
-function healthStatus({ impactPending, impactFailed, briefingPending, staleBriefingClaims, mattermostFailed, activeCooldowns }) {
-  if (impactFailed > 0 || staleBriefingClaims > 0) return 'degraded';
+function policyKey(row) {
+  return `${row.provider}:${row.model}:${row.operation}`;
+}
+
+export function splitCooldownRows(cooldownRows = [], policies = []) {
+  const configured = new Map(policies.map((policy) => [policyKey(policy), policy]));
+  const enabled = new Set(policies.filter((policy) => policy.enabled).map(policyKey));
+  const active = [];
+  const inactiveHistorical = [];
+
+  for (const row of cooldownRows) {
+    const key = policyKey(row);
+    if (enabled.has(key)) {
+      active.push(row);
+    } else {
+      inactiveHistorical.push({
+        ...row,
+        configured: configured.has(key),
+        enabled: false,
+      });
+    }
+  }
+
+  return {
+    active,
+    inactiveHistorical,
+  };
+}
+
+export function splitProviderRows(providerRows = [], policies = []) {
+  const configured = new Map(policies.map((policy) => [policyKey({
+    provider: policy.provider,
+    model: policy.model,
+    operation: policy.operation,
+  }), policy]));
+
+  return providerRows.map((row) => {
+    const key = policyKey({
+      provider: row.provider,
+      model: row.requested_model,
+      operation: row.operation,
+    });
+    const policy = configured.get(key);
+    return {
+      ...row,
+      configured: Boolean(policy),
+      enabled: Boolean(policy?.enabled),
+    };
+  });
+}
+
+function healthStatus({
+  impactPending,
+  impactFailed,
+  staleImpactRunning,
+  briefingPending,
+  staleBriefingClaims,
+  mattermostFailed,
+  activeCooldowns,
+}) {
+  if (impactFailed > 0 || staleImpactRunning > 0 || staleBriefingClaims > 0) return 'degraded';
   if (impactPending > 250 || briefingPending > 250 || mattermostFailed > 25) return 'degraded';
   if (activeCooldowns > 10) return 'warning';
   return 'ok';
@@ -598,6 +664,7 @@ export async function buildOpsHealth() {
     { rows: staleBriefingClaimRows },
     { rows: cooldownRows },
     { rows: providerRows },
+    { rows: dbRows },
     { rows: mattermostRows },
     { rows: feedRows },
   ] = await Promise.all([
@@ -606,13 +673,32 @@ export async function buildOpsHealth() {
         tc.slug AS category,
         j.status,
         count(*)::int AS jobs,
+        count(*) FILTER (
+          WHERE j.status = 'running'
+            AND j.locked_at >= NOW() - ($1::int * INTERVAL '1 minute')
+        )::int AS running_fresh,
+        count(*) FILTER (
+          WHERE j.status = 'running'
+            AND (
+              j.locked_at IS NULL
+              OR j.locked_at < NOW() - ($1::int * INTERVAL '1 minute')
+            )
+        )::int AS running_stale,
+        count(*) FILTER (
+          WHERE j.status = 'failed'
+            AND j.attempts < $2
+        )::int AS failed_retryable,
+        count(*) FILTER (
+          WHERE j.status = 'failed'
+            AND j.attempts >= $2
+        )::int AS failed_final,
         min(j.updated_at) AS oldest_updated_at
       FROM cluster_impact_jobs j
       JOIN story_clusters sc ON sc.id = j.cluster_id
       JOIN topic_categories tc ON tc.id = sc.category_id
       GROUP BY tc.slug, j.status
       ORDER BY tc.slug, j.status
-    `),
+    `, [config.impactJobStaleMinutes, config.impactJobMaxAttempts]),
     pool.query(`
       SELECT
         tc.slug AS category,
@@ -675,6 +761,25 @@ export async function buildOpsHealth() {
     `),
     pool.query(`
       SELECT
+        relname AS table_name,
+        n_live_tup::bigint AS live_rows,
+        n_dead_tup::bigint AS dead_rows,
+        CASE
+          WHEN n_live_tup > 0 THEN round((n_dead_tup::numeric / n_live_tup::numeric) * 100, 2)
+          ELSE 0
+        END::float AS dead_row_pct,
+        pg_total_relation_size(relid)::bigint AS total_bytes,
+        last_vacuum,
+        last_autovacuum,
+        last_analyze,
+        last_autoanalyze
+      FROM pg_stat_user_tables
+      WHERE schemaname = 'public'
+      ORDER BY n_dead_tup DESC, pg_total_relation_size(relid) DESC
+      LIMIT 15
+    `).catch(() => ({ rows: [] })),
+    pool.query(`
+      SELECT
         status,
         coalesce(error, '') AS error,
         count(*)::int AS notifications,
@@ -697,6 +802,10 @@ export async function buildOpsHealth() {
   const briefingPendingRows = filterBriefingRows(briefingRows);
   const impactTotals = impactRows.reduce((totals, row) => {
     totals[row.status] = (totals[row.status] || 0) + Number(row.jobs || 0);
+    totals.running_fresh = (totals.running_fresh || 0) + Number(row.running_fresh || 0);
+    totals.running_stale = (totals.running_stale || 0) + Number(row.running_stale || 0);
+    totals.failed_retryable = (totals.failed_retryable || 0) + Number(row.failed_retryable || 0);
+    totals.failed_final = (totals.failed_final || 0) + Number(row.failed_final || 0);
     return totals;
   }, {});
   const briefingPending = briefingPendingRows.reduce((total, row) => total + Number(row.pending || 0), 0);
@@ -704,13 +813,20 @@ export async function buildOpsHealth() {
   const mattermostFailed = mattermostRows
     .filter((row) => row.status === 'failed')
     .reduce((total, row) => total + Number(row.notifications || 0), 0);
+  const policies = [
+    ...configuredLlmModelPolicies('impact_scoring'),
+    ...configuredLlmModelPolicies('briefing_generation'),
+  ];
+  const cooldowns = splitCooldownRows(cooldownRows, policies);
+  const providerActivity = splitProviderRows(providerRows, policies);
   const status = healthStatus({
     impactPending: Number(impactTotals.pending || 0),
     impactFailed: Number(impactTotals.failed || 0),
+    staleImpactRunning: Number(impactTotals.running_stale || 0),
     briefingPending,
     staleBriefingClaims,
     mattermostFailed,
-    activeCooldowns: cooldownRows.length,
+    activeCooldowns: cooldowns.active.length,
   });
 
   return {
@@ -728,12 +844,15 @@ export async function buildOpsHealth() {
       },
     },
     providers: {
-      policies: [
-        ...configuredLlmModelPolicies('impact_scoring'),
-        ...configuredLlmModelPolicies('briefing_generation'),
-      ],
-      activeCooldowns: cooldownRows,
-      lastHour: providerRows,
+      policies,
+      activeCooldowns: cooldowns.active,
+      inactiveHistoricalCooldowns: cooldowns.inactiveHistorical,
+      lastHour: providerActivity,
+    },
+    database: {
+      tables: dbRows,
+      deadRows: dbRows.reduce((total, row) => total + Number(row.dead_rows || 0), 0),
+      highestDeadRowPct: dbRows.reduce((max, row) => Math.max(max, Number(row.dead_row_pct || 0)), 0),
     },
     mattermost: mattermostRows,
     feeds: feedRows[0] || {},

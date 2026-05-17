@@ -42,6 +42,60 @@ function spacingMs(provider, model) {
   return Math.ceil(60000 / limit.rpm);
 }
 
+function dailyBudgetThreshold(limit) {
+  const ratio = Number(config.llmDailyBudgetSafetyRatio);
+  const boundedRatio = Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : 0.95;
+  return Math.max(1, Math.floor(Number(limit) * boundedRatio));
+}
+
+async function dailyBudgetCooldown({ provider, model, operation }) {
+  const limit = knownLimit(provider, model);
+  if (!limit?.tpd && !limit?.rpd) return null;
+
+  const { rows } = await pool.query(`
+    SELECT
+      count(*) FILTER (WHERE status = 'ok')::int AS ok_requests,
+      coalesce(sum(total_tokens) FILTER (WHERE status = 'ok'), 0)::bigint AS ok_tokens
+    FROM llm_request_logs
+    WHERE provider = $1
+      AND requested_model = $2
+      AND created_at >= NOW() - INTERVAL '24 hours'
+  `, [provider, model]);
+
+  const usage = rows[0] || {};
+  const okRequests = Number(usage.ok_requests || 0);
+  const okTokens = Number(usage.ok_tokens || 0);
+  const rpdThreshold = limit.rpd ? dailyBudgetThreshold(limit.rpd) : null;
+  const tpdThreshold = limit.tpd ? dailyBudgetThreshold(limit.tpd) : null;
+
+  let exhausted = null;
+  if (rpdThreshold && okRequests >= rpdThreshold) {
+    exhausted = `request budget ${okRequests}/${limit.rpd}`;
+  }
+  if (tpdThreshold && okTokens >= tpdThreshold) {
+    exhausted = `token budget ${okTokens}/${limit.tpd}`;
+  }
+  if (!exhausted) return null;
+
+  const cooldownMs = integerMilliseconds(config.llmDailyBudgetCooldownMs, 60 * 60 * 1000);
+  const message = `preventive daily budget guard: ${exhausted}`;
+  const { rows: cooldownRows } = await pool.query(`
+    INSERT INTO llm_provider_cooldowns (
+      provider, model, operation, reason, cooldown_until, failure_count, last_error, updated_at
+    )
+    VALUES ($1, $2, $3, 'daily_budget_guard', NOW() + ($4::int * INTERVAL '1 millisecond'), 0, $5, NOW())
+    ON CONFLICT (provider, model, operation) DO UPDATE SET
+      reason = EXCLUDED.reason,
+      cooldown_until = GREATEST(llm_provider_cooldowns.cooldown_until, EXCLUDED.cooldown_until),
+      failure_count = 0,
+      last_error = EXCLUDED.last_error,
+      updated_at = NOW()
+    RETURNING provider, model, operation, reason, cooldown_until, failure_count, last_error
+  `, [provider, model, operation, cooldownMs, message]);
+
+  return cooldownRows[0] || null;
+}
+
 function parseRetryDurationMs(message) {
   const text = String(message || '').toLowerCase();
   const retryAfterSeconds = text.match(/retry-after[^0-9]*(\d+)/);
@@ -148,6 +202,9 @@ export async function getLlmCooldown({ provider, model, operation }) {
 export async function reserveLlmProviderSlot({ provider, model, operation }) {
   if (!config.llmCooldownEnabled || !provider || !model) return { reserved: true, cooldown: null };
   await ensureCooldownTable();
+
+  const budgetCooldown = await dailyBudgetCooldown({ provider, model, operation });
+  if (budgetCooldown) return { reserved: false, cooldown: budgetCooldown };
 
   const ms = spacingMs(provider, model);
   if (ms <= 0) {

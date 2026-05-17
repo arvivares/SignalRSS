@@ -9,10 +9,10 @@ import {
   hasPriorityBriefingWork,
   runPriorityBriefings,
 } from './generate-priority-briefings.js';
-import { maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
 import { loadActiveCategorySlugs } from './category-runtime.js';
 import { PRIORITY_LEVELS } from './priority-config.js';
 import { isBriefingExcluded } from './briefing-exclusions.js';
+import { batchSizeForBriefingProviders } from './briefing-batch-policy.js';
 
 let shuttingDown = false;
 
@@ -107,30 +107,6 @@ function workerWorkItems(items, workerSlot) {
   return owned.length > 0 ? owned : items;
 }
 
-function batchSizeForProviders(level, providers) {
-  const operation = 'briefing_generation';
-  const nonOpenAiProviders = providers.filter((provider) => provider.provider !== 'openai');
-  const boundedFreeBatchSizes = nonOpenAiProviders
-    .map((provider) => maxBatchSizeForLlmProvider({
-      provider: provider.provider,
-      model: provider.model,
-      operation,
-    }))
-    .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0)
-    .map(Number);
-  if (nonOpenAiProviders.length > 0) {
-    const defaultFreeBatchSize = Math.max(1, Number(config.categoryBriefingFreeBatchSize) || 1);
-    if (boundedFreeBatchSizes.length === 0) return defaultFreeBatchSize;
-
-    // Keep bounded free providers usable as fallbacks. If an unbounded provider
-    // later fails, the same batch should still fit GitHub/OpenRouter/LLMRack.
-    return Math.max(1, Math.min(defaultFreeBatchSize, ...boundedFreeBatchSizes));
-  }
-
-  if (providers.some((provider) => provider.provider === 'openai')) return config.categoryBriefingOpenAiBatchSize;
-  return undefined;
-}
-
 async function tick(workerSlot) {
   const workItems = workerWorkItems(await loadBriefingWorkItems(), workerSlot);
   console.log(
@@ -152,7 +128,7 @@ async function tick(workerSlot) {
         continue;
       }
       if (!(await hasPriorityBriefingProviderAvailable(level, { categorySlug }))) continue;
-      const batchSizeOverride = batchSizeForProviders(level, providers);
+      const batchSizeOverride = batchSizeForBriefingProviders(providers);
       console.log(
         `Category briefing run category=${categorySlug} level=${level} backlog=${item.backlog} ` +
           `batch=${batchSizeOverride || 'default'} providers=${providers.map((provider) => provider.provider).join(',')}`,
@@ -204,8 +180,10 @@ async function main() {
   );
 }
 
-main().catch(async (error) => {
-  console.error(error);
-  await closeDb().catch(() => {});
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(async (error) => {
+    console.error(error);
+    await closeDb().catch(() => {});
+    process.exit(1);
+  });
+}

@@ -102,6 +102,10 @@ BRIEFING_MODEL_FALLBACKS=
 
 Provider cooldown and batch controls are configured through `LLM_*` variables. This lets the stack reduce load on providers that return rate limits, payload-size errors, transport failures, or invalid responses.
 
+Daily provider budgets are guarded before a request is sent. If recent successful usage is close to a configured `tpd` or `rpd` limit, the provider is temporarily skipped and the fallback chain continues. This prevents repeated 429s from blocking the queue when a free tier is already effectively exhausted.
+
+Briefing workers choose batch sizes from the active provider set. If at least one free provider can handle larger batches, bounded providers such as GitHub/OpenRouter are skipped for that batch instead of forcing the whole worker down to batch size 1. OpenAI remains the final fallback.
+
 Brief output language is configurable:
 
 ```bash
@@ -163,6 +167,7 @@ Generated thumbnails are local runtime artifacts and should not be committed.
 | `/groups.xml` | Grouped story RSS feed. |
 | `/api/clusters` | Cluster JSON API. |
 | `/api/news` | Queue data for the `/news` UI. |
+| `/api/ops/health` | Operational JSON with queues, active versus historical provider cooldowns, DB health, Mattermost state, and feed health. |
 | `/api/news/swipe` | Records `/news` swipe decisions. |
 | `/api/news/interested` | Lists selected stories. |
 | `/api/ops/health` | Operational pipeline health for queues, providers, cooldowns, Mattermost, and feeds. |

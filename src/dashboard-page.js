@@ -27,6 +27,7 @@ function renderOpsSummary({ ops, metrics }) {
   const impactRunning = Number(ops.queues?.impact?.totals?.running || 0);
   const briefingPending = Number(ops.queues?.briefing?.pending || 0);
   const activeCooldowns = Number(ops.providers?.activeCooldowns?.length || 0);
+  const inactiveCooldowns = Number(ops.providers?.inactiveHistoricalCooldowns?.length || 0);
   const mattermostFailed = (ops.mattermost || [])
     .filter((row) => row.status === 'failed')
     .reduce((total, row) => total + Number(row.notifications || 0), 0);
@@ -57,9 +58,9 @@ function renderOpsSummary({ ops, metrics }) {
         <div><strong>${formatNumber(impactPending)}</strong><span>impact pendientes</span></div>
         <div><strong>${formatNumber(impactRunning)}</strong><span>impact corriendo</span></div>
         <div><strong>${formatNumber(briefingPending)}</strong><span>briefs pendientes</span></div>
-        <div><strong>${formatNumber(activeCooldowns)}</strong><span>cooldowns LLM</span></div>
+        <div><strong>${formatNumber(activeCooldowns)}</strong><span>cooldowns activos</span></div>
       </div>
-      <p>${formatNumber(metrics.feeds.successful_feeds_24h)} de ${formatNumber(metrics.feeds.enabled_feeds)} feeds respondieron en 24h. ${mattermostFailed ? `${formatNumber(mattermostFailed)} publicaciones Mattermost fallidas recientes.` : 'Mattermost sin fallos recientes críticos.'}</p>
+      <p>${formatNumber(metrics.feeds.successful_feeds_24h)} de ${formatNumber(metrics.feeds.enabled_feeds)} feeds respondieron en 24h. ${mattermostFailed ? `${formatNumber(mattermostFailed)} publicaciones Mattermost fallidas recientes.` : 'Mattermost sin fallos recientes críticos.'}${inactiveCooldowns ? ` ${formatNumber(inactiveCooldowns)} cooldowns históricos quedan fuera del circuito activo.` : ''}</p>
     </div>
   </section>`;
 }
@@ -198,10 +199,10 @@ function renderProviderPulse(ops = {}) {
     ${rows.map((row) => {
       const failed = Number(row.failed || 0);
       const ok = Number(row.ok || 0);
-      const tone = failed > ok ? 'danger' : failed > 0 ? 'warn' : 'ok';
+      const tone = !row.enabled ? 'muted' : failed > ok ? 'danger' : failed > 0 ? 'warn' : 'ok';
       return `<div class="provider-chip ${tone}">
         <strong>${escapeHtml(row.provider)}</strong>
-        <span>${escapeHtml(row.operation.replace('_', ' '))}</span>
+        <span>${escapeHtml(row.operation.replace('_', ' '))}${row.enabled ? '' : ' · fuera del circuito'}</span>
         <em>${formatNumber(ok)} ok / ${formatNumber(failed)} fail</em>
       </div>`;
     }).join('')}
@@ -278,12 +279,14 @@ function renderBacklogStatus(rows) {
       const impactPending = Number(row.impact_pending || 0);
       const impactRunning = Number(row.impact_running || 0);
       const impactFailed = Number(row.impact_failed || 0);
+      const staleRunning = Number(row.impact_running_stale || row.running_stale || 0);
       const briefingPending = Number(row.briefing_pending || 0);
       const done = impactPending === 0 && impactFailed === 0 && briefingPending === 0;
-      const state = impactFailed > 0 ? 'fallida' : done ? 'terminada' : 'pendiente';
+      const state = staleRunning > 0 ? 'trabada' : impactFailed > 0 ? 'fallida' : done ? 'terminada' : 'pendiente';
       const detail = [
         `${formatNumber(impactPending)} impact`,
         impactRunning ? `${formatNumber(impactRunning)} corriendo` : '',
+        staleRunning ? `${formatNumber(staleRunning)} stale` : '',
         impactFailed ? `${formatNumber(impactFailed)} fallidos` : '',
         `${formatNumber(briefingPending)} briefs`,
       ].filter(Boolean).join(' · ');
@@ -292,7 +295,25 @@ function renderBacklogStatus(rows) {
           <strong>${escapeHtml(row.category)}</strong>
           <span>${formatNumber(row.clusters)} clusters · ${escapeHtml(state)}</span>
         </div>
-        <div class="${impactFailed ? 'danger' : done ? 'ok' : 'warn'}">${escapeHtml(detail)}</div>
+        <div class="${impactFailed || staleRunning ? 'danger' : done ? 'ok' : 'warn'}">${escapeHtml(detail)}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderDatabaseHealth(database = {}) {
+  const rows = database.tables || [];
+  if (!rows.length) return '<p>No hay métricas de base disponibles.</p>';
+  return `<div class="status-list compact">
+    ${rows.slice(0, 8).map((row) => {
+      const deadPct = Number(row.dead_row_pct || 0);
+      const tone = deadPct > 20 ? 'danger' : deadPct > 10 ? 'warn' : 'ok';
+      return `<div class="status-row">
+        <div>
+          <strong>${escapeHtml(row.table_name)}</strong>
+          <span>${formatNumber(row.live_rows)} vivas · ${formatNumber(row.dead_rows)} dead</span>
+        </div>
+        <div class="${tone}">${formatDecimal(deadPct, 1)}%</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -542,6 +563,11 @@ export async function renderDashboardPage({ renderLayout }) {
         <h2>Briefings generados</h2>
         <p>Throughput reciente por categoría y prioridad.</p>
         ${renderBriefingThroughput(metrics.briefingThroughput)}
+      </section>
+      <section class="card">
+        <h2>Salud de base</h2>
+        <p>Tablas con más filas muertas. Sirve para decidir cuándo correr mantenimiento.</p>
+        ${renderDatabaseHealth(ops.database)}
       </section>
     </div>
     <div class="dashboard-grid">
