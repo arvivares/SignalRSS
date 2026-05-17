@@ -112,15 +112,26 @@ export async function buildDashboardMetrics() {
             FROM cluster_articles ca
             WHERE ca.cluster_id = sc.id
           )
+      ),
+      impact_jobs AS (
+        SELECT
+          tc.slug AS category,
+          count(*) FILTER (WHERE j.status IN ('pending', 'running'))::int AS impact_pending,
+          count(*) FILTER (WHERE j.status = 'running')::int AS impact_running,
+          count(*) FILTER (WHERE j.status = 'failed')::int AS impact_failed
+        FROM cluster_impact_jobs j
+        JOIN story_clusters sc ON sc.id = j.cluster_id
+        JOIN topic_categories tc ON tc.id = sc.category_id
+        WHERE sc.latest_published_at >= NOW() - INTERVAL '7 days'
+          AND ($1::timestamptz IS NULL OR sc.latest_published_at >= $1::timestamptz)
+        GROUP BY tc.slug
       )
       SELECT
         tc.slug AS category,
         count(rc.id)::int AS clusters,
-        count(rc.id) FILTER (
-          WHERE cis.cluster_id IS NULL
-             OR cis.scored_at < rc.updated_at
-             OR cis.updated_at < rc.updated_at
-        )::int AS impact_pending,
+        coalesce(ij.impact_pending, 0)::int AS impact_pending,
+        coalesce(ij.impact_running, 0)::int AS impact_running,
+        coalesce(ij.impact_failed, 0)::int AS impact_failed,
         count(rc.id) FILTER (
           WHERE cis.cluster_id IS NOT NULL
             AND (
@@ -131,12 +142,13 @@ export async function buildDashboardMetrics() {
         )::int AS briefing_pending
       FROM recent_clusters rc
       JOIN topic_categories tc ON tc.id = rc.category_id
+      LEFT JOIN impact_jobs ij ON ij.category = tc.slug
       LEFT JOIN cluster_impact_scores cis ON cis.cluster_id = rc.id
       LEFT JOIN cluster_briefings cb
         ON cb.cluster_id = rc.id
         AND cb.locale = 'es'
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
-      GROUP BY tc.slug
+      GROUP BY tc.slug, ij.impact_pending, ij.impact_running, ij.impact_failed
       ORDER BY briefing_pending DESC, impact_pending DESC, tc.slug
     `, [config.impactMinPublishedAt || config.briefingMinPublishedAt || null]),
     pool.query(`
@@ -279,11 +291,23 @@ export async function buildDashboardMetrics() {
 
   const backlogTotals = adjustedBacklogRows.reduce((total, row) => ({
     impactPending: total.impactPending + Number(row.impact_pending || 0),
+    impactRunning: total.impactRunning + Number(row.impact_running || 0),
+    impactFailed: total.impactFailed + Number(row.impact_failed || 0),
     briefingPending: total.briefingPending + Number(row.briefing_pending || 0),
     completedCategories: total.completedCategories + (
-      Number(row.impact_pending || 0) === 0 && Number(row.briefing_pending || 0) === 0 ? 1 : 0
+      Number(row.impact_pending || 0) === 0
+      && Number(row.impact_failed || 0) === 0
+      && Number(row.briefing_pending || 0) === 0
+        ? 1
+        : 0
     ),
-  }), { impactPending: 0, briefingPending: 0, completedCategories: 0 });
+  }), {
+    impactPending: 0,
+    impactRunning: 0,
+    impactFailed: 0,
+    briefingPending: 0,
+    completedCategories: 0,
+  });
 
   return {
     articles: articleRows[0] || {},

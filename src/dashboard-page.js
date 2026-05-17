@@ -31,7 +31,12 @@ function renderOpsSummary({ ops, metrics }) {
     .filter((row) => row.status === 'failed')
     .reduce((total, row) => total + Number(row.notifications || 0), 0);
   const status = ops.status || 'unknown';
-  const statusLabel = status === 'ok' ? 'Nominal' : status === 'warning' ? 'Atención' : 'Degradado';
+  const statusLabel = status === 'ok' ? 'Nominal' : status === 'warning' ? 'Requiere atención' : 'Degradado';
+  const title = status === 'ok'
+    ? 'Todo nominal.'
+    : status === 'warning'
+      ? 'Hay trabajo pendiente.'
+      : 'Hay fallas que requieren intervención.';
 
   return `<section class="ops-hero card">
     <div class="ops-hero-main">
@@ -39,13 +44,11 @@ function renderOpsSummary({ ops, metrics }) {
         <span class="live-dot ${escapeHtml(severityClass(status))}"></span>
         <span>Estado operativo</span>
       </div>
-      <h1>SignalRSS está ${escapeHtml(statusLabel.toLowerCase())}.</h1>
-      <p class="lede">Foto de la base al refrescar. Impact, briefings, proveedores y Mattermost quedan resumidos para decidir rápido dónde intervenir.</p>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="lede">Vista ejecutiva del pipeline: qué está entrando, qué falta procesar y qué puede bloquear publicaciones.</p>
       <div class="toolbar">
-        <a class="pill primary" href="/">Refresh</a>
+        <a class="pill primary" href="/">Actualizar</a>
         <a class="pill" href="/api/ops/health">Ops JSON</a>
-        <a class="pill" href="/news">News triage</a>
-        <a class="pill" href="/impact">Impact</a>
       </div>
     </div>
     <div class="ops-scorecard">
@@ -61,12 +64,90 @@ function renderOpsSummary({ ops, metrics }) {
   </section>`;
 }
 
+function buildRecommendedAction({ ops, metrics }) {
+  const failedMattermost = (ops.mattermost || [])
+    .filter((row) => row.status === 'failed')
+    .reduce((total, row) => total + Number(row.notifications || 0), 0);
+  const staleClaims = (ops.queues?.briefing?.claims || [])
+    .reduce((total, row) => total + Number(row.stale_claims || 0), 0);
+  const topBacklog = [...(metrics.backlog || [])]
+    .map((row) => {
+      const impactPending = Number(row.impact_pending || 0);
+      const impactFailed = Number(row.impact_failed || 0);
+      const briefingPending = Number(row.briefing_pending || 0);
+      const score = impactPending + briefingPending + (impactFailed * 4);
+      return { ...row, impactPending, impactFailed, briefingPending, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((left, right) => right.score - left.score)[0];
+
+  if (staleClaims > 0) {
+    return {
+      tone: 'danger',
+      label: 'Acción sugerida',
+      title: 'Liberar claims de briefings',
+      body: `${formatNumber(staleClaims)} locks parecen viejos. Conviene revisar workers antes de escalar más capacidad.`,
+    };
+  }
+
+  if (topBacklog?.impactFailed > 0) {
+    return {
+      tone: 'danger',
+      label: 'Acción sugerida',
+      title: `Revisar impact en ${topBacklog.category}`,
+      body: `${formatNumber(topBacklog.impactFailed)} jobs fallidos y ${formatNumber(topBacklog.impactPending)} pendientes/corriendo.`,
+    };
+  }
+
+  if (failedMattermost > 0) {
+    return {
+      tone: 'warn',
+      label: 'Acción sugerida',
+      title: 'Reintentar Mattermost',
+      body: `${formatNumber(failedMattermost)} publicaciones fallidas en las últimas 24h. Revisar DNS/webhook antes de reintentar.`,
+    };
+  }
+
+  if (topBacklog) {
+    return {
+      tone: 'warn',
+      label: 'Acción sugerida',
+      title: `Drenar ${topBacklog.category}`,
+      body: `${formatNumber(topBacklog.impactPending)} impact y ${formatNumber(topBacklog.briefingPending)} briefings pendientes/corriendo.`,
+    };
+  }
+
+  return {
+    tone: 'ok',
+    label: 'Acción sugerida',
+    title: 'No intervenir',
+    body: 'El pipeline no muestra backlog operativo ni bloqueos relevantes en esta foto.',
+  };
+}
+
+function renderRecommendedAction({ ops, metrics }) {
+  const action = buildRecommendedAction({ ops, metrics });
+  return `<section class="card action-card ${escapeHtml(action.tone)}">
+    <div class="section-head">
+      <div>
+        <div class="label">${escapeHtml(action.label)}</div>
+        <h2>${escapeHtml(action.title)}</h2>
+      </div>
+    </div>
+    <p>${escapeHtml(action.body)}</p>
+  </section>`;
+}
+
 function renderBacklogSpotlight(rows = []) {
   const pending = rows
-    .filter((row) => Number(row.impact_pending || 0) > 0 || Number(row.briefing_pending || 0) > 0)
+    .filter((row) => (
+      Number(row.impact_pending || 0) > 0
+      || Number(row.briefing_pending || 0) > 0
+      || Number(row.impact_failed || 0) > 0
+    ))
     .sort((left, right) => (
-      (Number(right.impact_pending || 0) + Number(right.briefing_pending || 0))
-      - (Number(left.impact_pending || 0) + Number(left.briefing_pending || 0))
+      (Number(right.impact_pending || 0) + Number(right.briefing_pending || 0) + (Number(right.impact_failed || 0) * 4))
+      - (Number(left.impact_pending || 0) + Number(left.briefing_pending || 0) + (Number(left.impact_failed || 0) * 4))
     ))
     .slice(0, 5);
 
@@ -77,16 +158,29 @@ function renderBacklogSpotlight(rows = []) {
     </div>`;
   }
 
-  const max = Math.max(...pending.map((row) => Number(row.impact_pending || 0) + Number(row.briefing_pending || 0)), 1);
+  const max = Math.max(...pending.map((row) => (
+    Number(row.impact_pending || 0)
+    + Number(row.briefing_pending || 0)
+    + (Number(row.impact_failed || 0) * 4)
+  )), 1);
   return `<div class="spotlight-list">
     ${pending.map((row) => {
       const impact = Number(row.impact_pending || 0);
+      const running = Number(row.impact_running || 0);
+      const failed = Number(row.impact_failed || 0);
       const briefing = Number(row.briefing_pending || 0);
-      const total = impact + briefing;
+      const total = impact + briefing + (failed * 4);
+      const details = [
+        `${formatNumber(row.clusters)} clusters`,
+        `${formatNumber(impact)} impact`,
+        running ? `${formatNumber(running)} corriendo` : '',
+        failed ? `${formatNumber(failed)} fallidos` : '',
+        `${formatNumber(briefing)} briefs`,
+      ].filter(Boolean).join(' · ');
       return `<div class="spotlight-row">
         <div>
           <strong>${escapeHtml(row.category)}</strong>
-          <span>${formatNumber(row.clusters)} clusters · ${formatNumber(impact)} impact · ${formatNumber(briefing)} briefs</span>
+          <span>${escapeHtml(details)}</span>
         </div>
         <div class="spotlight-meter" aria-label="${escapeHtml(row.category)} backlog">
           <span style="width:${Math.max(6, Math.round((total / max) * 100))}%"></span>
@@ -157,14 +251,23 @@ function renderBacklogStatus(rows) {
   return `<div class="status-list">
     ${rows.map((row) => {
       const impactPending = Number(row.impact_pending || 0);
+      const impactRunning = Number(row.impact_running || 0);
+      const impactFailed = Number(row.impact_failed || 0);
       const briefingPending = Number(row.briefing_pending || 0);
-      const done = impactPending === 0 && briefingPending === 0;
+      const done = impactPending === 0 && impactFailed === 0 && briefingPending === 0;
+      const state = impactFailed > 0 ? 'fallida' : done ? 'terminada' : 'pendiente';
+      const detail = [
+        `${formatNumber(impactPending)} impact`,
+        impactRunning ? `${formatNumber(impactRunning)} corriendo` : '',
+        impactFailed ? `${formatNumber(impactFailed)} fallidos` : '',
+        `${formatNumber(briefingPending)} briefs`,
+      ].filter(Boolean).join(' · ');
       return `<div class="status-row">
         <div>
           <strong>${escapeHtml(row.category)}</strong>
-          <span>${formatNumber(row.clusters)} clusters · ${done ? 'terminada' : 'pendiente'}</span>
+          <span>${formatNumber(row.clusters)} clusters · ${escapeHtml(state)}</span>
         </div>
-        <div class="${done ? 'ok' : 'warn'}">${formatNumber(impactPending)} impact · ${formatNumber(briefingPending)} briefs</div>
+        <div class="${impactFailed ? 'danger' : done ? 'ok' : 'warn'}">${escapeHtml(detail)}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -334,12 +437,15 @@ export async function renderDashboardPage({ renderLayout }) {
   const feedMetrics = metrics.feeds;
   const backlog = metrics.backlogTotals;
   const pendingCategories = metrics.backlog.filter((row) => (
-    Number(row.impact_pending || 0) > 0 || Number(row.briefing_pending || 0) > 0
+    Number(row.impact_pending || 0) > 0
+    || Number(row.briefing_pending || 0) > 0
+    || Number(row.impact_failed || 0) > 0
   ));
 
   const body = `
     ${renderOpsSummary({ ops, metrics })}
     <div class="command-grid">
+      ${renderRecommendedAction({ ops, metrics })}
       <section class="card command-card">
         <div class="section-head">
           <div>
@@ -359,21 +465,12 @@ export async function renderDashboardPage({ renderLayout }) {
         </div>
         ${renderProviderPulse(ops)}
       </section>
-      <section class="card command-card">
-        <div class="section-head">
-          <div>
-            <div class="label">Publicación</div>
-            <h2>Mattermost</h2>
-          </div>
-        </div>
-        ${renderMattermostPulse(ops.mattermost)}
-      </section>
     </div>
     <div class="grid">
       ${metricCard('Noticias ingresadas 24h', formatNumber(articleMetrics.articles_ingested_24h), `${formatDecimal(feedMetrics.avg_articles_ingested_per_hour)} por hora promedio`, 'fresh')}
       ${metricCard('Noticias publicadas 24h', formatNumber(articleMetrics.articles_published_24h), 'Según published_at de cada fuente')}
       ${metricCard('Feeds con novedades 24h', formatNumber(feedMetrics.feeds_with_new_articles_24h), `${formatNumber(feedMetrics.enabled_feeds)} feeds habilitados`)}
-      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impactos pendientes`, backlog.briefingPending || backlog.impactPending ? 'warn' : 'fresh')}
+      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impact pendientes/corriendo${backlog.impactFailed ? ` · ${formatNumber(backlog.impactFailed)} fallidos` : ''}`, backlog.briefingPending || backlog.impactPending || backlog.impactFailed ? 'warn' : 'fresh')}
       ${metricCard('Artículos 7 días', formatNumber(articleMetrics.articles_ingested_7d), `${formatNumber(articleMetrics.articles_published_7d)} publicados en ventana`)}
       ${metricCard('Clusters 7 días', formatNumber(clusters.clusters_last_7_days), `${formatNumber(clusters.clustered_article_links)} links clusterizados`)}
       ${metricCard('Categorías completas', `${formatNumber(backlog.completedCategories)}/${formatNumber(metrics.backlog.length)}`, 'Sin impacto ni briefings pendientes')}
@@ -394,12 +491,25 @@ export async function renderDashboardPage({ renderLayout }) {
     <div class="dashboard-grid">
       <section class="card">
         <h2>Pendientes por categoría</h2>
-        <p>${pendingCategories.length ? 'Categorías con trabajo pendiente en impacto o briefings.' : 'Todas las categorías están completas.'}</p>
+        <p>${pendingCategories.length ? 'Foto directa de jobs de impacto y briefings pendientes. Incluye jobs corriendo y fallidos.' : 'Todas las categorías están completas.'}</p>
         ${renderBacklogStatus(metrics.backlog)}
       </section>
       <section class="card">
+        <h2>Mattermost P0</h2>
+        <p>Publicaciones registradas para categorías integradas: ${escapeHtml(renderMattermostConfiguredCategories(metrics.mattermostCategories))}.</p>
+        ${renderMattermostPulse(ops.mattermost)}
+        ${renderMattermostStatus(metrics.mattermost)}
+      </section>
+    </div>
+    <div class="dashboard-grid">
+      <section class="card">
         <h2>Briefings pendientes</h2>
         ${renderPendingBriefings(metrics.briefingPending)}
+      </section>
+      <section class="card">
+        <h2>Briefings generados</h2>
+        <p>Throughput reciente por categoría y prioridad.</p>
+        ${renderBriefingThroughput(metrics.briefingThroughput)}
       </section>
     </div>
     <div class="dashboard-grid">
@@ -408,9 +518,8 @@ export async function renderDashboardPage({ renderLayout }) {
         ${renderTopFeeds(metrics.topFeeds)}
       </section>
       <section class="card">
-        <h2>Mattermost P0</h2>
-        <p>Publicaciones registradas para las categorías integradas: ${escapeHtml(renderMattermostConfiguredCategories(metrics.mattermostCategories))}.</p>
-        ${renderMattermostStatus(metrics.mattermost)}
+        <h2>Accesos operativos</h2>
+        <p>Detalles técnicos para investigar cuando la home marque una acción concreta.</p>
         <div class="toolbar">
           <a class="pill" href="/classification/stats">Classification stats</a>
           <a class="pill" href="/clusters/stats">Cluster stats</a>
@@ -426,16 +535,11 @@ export async function renderDashboardPage({ renderLayout }) {
         ${renderLlmStatus(metrics.llm)}
       </section>
       <section class="card">
-        <h2>Briefings generados</h2>
-        <p>Throughput reciente por categoría y prioridad.</p>
-        ${renderBriefingThroughput(metrics.briefingThroughput)}
+        <h2>Claims de briefings</h2>
+        <p>Locks activos para detectar procesos colgados o reinicios incompletos.</p>
+        ${renderBriefingClaims(metrics.briefingClaims)}
       </section>
     </div>
-    <section class="section card">
-      <h2>Claims de briefings</h2>
-      <p>Locks activos para detectar procesos colgados o reinicios incompletos.</p>
-      ${renderBriefingClaims(metrics.briefingClaims)}
-    </section>
     <div class="dashboard-grid">
       <section class="card">
         <h2>News triage</h2>

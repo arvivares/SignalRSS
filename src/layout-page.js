@@ -173,6 +173,27 @@ export function renderLayout({ title, body, bodyClass = '', hideTopbar = false }
       margin: 14px 0;
     }
     .command-card { min-height: 250px; }
+    .action-card {
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-color: rgba(23, 19, 15, .14);
+    }
+    .action-card h2 { font-size: clamp(28px, 4vw, 46px); line-height: .95; }
+    .action-card p { margin: 18px 0 0; font-size: 16px; }
+    .action-card.ok {
+      background:
+        linear-gradient(135deg, rgba(30, 111, 99, .16), rgba(255, 250, 241, .90));
+    }
+    .action-card.warn {
+      background:
+        linear-gradient(135deg, rgba(183, 122, 27, .20), rgba(255, 250, 241, .90));
+    }
+    .action-card.danger {
+      background:
+        linear-gradient(135deg, rgba(159, 47, 31, .18), rgba(255, 250, 241, .90));
+    }
     .section-head {
       display: flex;
       justify-content: space-between;
@@ -718,19 +739,9 @@ export function renderLayout({ title, body, bodyClass = '', hideTopbar = false }
       <nav>
         <a href="/">Dashboard</a>
         <a href="/news">News</a>
-        <a href="/clusters">Clusters</a>
         <a href="/impact">Impact</a>
-        <a href="/p0">P0 ES</a>
-        <a href="/p1">P1 ES</a>
-        <a href="/p2">P2 ES</a>
-        <a href="/p3">P3 ES</a>
-        <a href="/cybersecurity/p0">Cyber P0</a>
-        <a href="/cybersecurity/p1">Cyber P1</a>
-        <a href="/cloud-infrastructure/p0">Cloud P0</a>
-        <a href="/semiconductors/p0">Semi P0</a>
-        <a href="/semiconductors/p1">Semi P1</a>
-        <a href="/groups.xml">Groups RSS</a>
-        <a href="/rss.xml">Raw RSS</a>
+        <a href="/p0">P0</a>
+        <a href="/groups.xml">RSS</a>
       </nav>
     </div>`}
     ${body}
