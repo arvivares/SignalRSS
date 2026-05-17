@@ -73,12 +73,15 @@ Per-model overrides use comma-separated `key=value` pairs. The environment varia
 Example:
 
 ```bash
-LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=true,briefing_enabled=false
+LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B=impact_enabled=false,briefing_enabled=false
+LLM_MODEL_POLICY_GITHUB_META_META_LLAMA_3_1_8B_INSTRUCT=impact_enabled=false,briefing_max_batch_size=1
 ```
 
 Supported keys are `enabled`, `impact_enabled`, `briefing_enabled`, `rpm`, `tpm`, `tpd`, `rpd`, `impact_max_batch_size`, and `briefing_max_batch_size`.
 
 The effective policy is visible at `/api/ops/health` under `providers.policies`.
+
+Nominal fallbacks should stay ordered by observed reliability, not by theoretical model quality. If a provider starts returning sustained 429s, invalid JSON, or daily-quota errors, disable it with a model policy or move it behind the stable free providers and before OpenAI.
 
 ## Cross-category deduplication
 
@@ -106,6 +109,8 @@ For publication safety, keep Mattermost clearance enabled. It is cheaper to dela
 | `MATTERMOST_IMAGE_UPLOAD_ENABLED` | Uploads generated images to an external temporary host. |
 
 Use category-specific channels instead of one global channel when the audience differs by topic.
+
+The Mattermost worker automatically marks stale `failed` notifications as `superseded` when a later post already covers the same story, the source cluster was removed, or the current cluster is no longer eligible for the configured Mattermost levels. That keeps the dashboard focused on failures that can still be retried.
 
 ## Langfuse
 

@@ -51,14 +51,23 @@ x-llm-env: &llm-env
   LLM_LLMRACK_TPD: ${LLM_LLMRACK_TPD:-10000}
   LLM_LLMRACK_IMPACT_MAX_BATCH_SIZE: ${LLM_LLMRACK_IMPACT_MAX_BATCH_SIZE:-2}
   LLM_LLMRACK_BRIEFING_MAX_BATCH_SIZE: ${LLM_LLMRACK_BRIEFING_MAX_BATCH_SIZE:-1}
-  LLM_GITHUB_LOW_RPM: ${LLM_GITHUB_LOW_RPM:-15}
-  LLM_GITHUB_IMPACT_MAX_BATCH_SIZE: ${LLM_GITHUB_IMPACT_MAX_BATCH_SIZE:-8}
-  LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE: ${LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE:-2}
-  LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE: ${LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE:-8}
-  LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE: ${LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE:-2}
-  LLM_OPENROUTER_FREE_RPM: ${LLM_OPENROUTER_FREE_RPM:-20}
+  LLM_GITHUB_LOW_RPM: ${LLM_GITHUB_LOW_RPM:-6}
+  LLM_GITHUB_IMPACT_MAX_BATCH_SIZE: ${LLM_GITHUB_IMPACT_MAX_BATCH_SIZE:-2}
+  LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE: ${LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE:-1}
+  LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE: ${LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE:-4}
+  LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE: ${LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE:-1}
+  LLM_OPENROUTER_FREE_RPM: ${LLM_OPENROUTER_FREE_RPM:-8}
   LLM_OPENROUTER_FREE_RPD: ${LLM_OPENROUTER_FREE_RPD:-50}
-  LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B: ${LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B:-impact_enabled=true,briefing_enabled=false}
+  LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B: ${LLM_MODEL_POLICY_SAMBANOVA_GPT_OSS_120B:-impact_enabled=false,briefing_enabled=false}
+  LLM_MODEL_POLICY_LLMRACK_QWEN_2_5_7B: ${LLM_MODEL_POLICY_LLMRACK_QWEN_2_5_7B:-enabled=false}
+  LLM_MODEL_POLICY_CLOUDFLARE__CF_OPENAI_GPT_OSS_120B: ${LLM_MODEL_POLICY_CLOUDFLARE__CF_OPENAI_GPT_OSS_120B:-enabled=false}
+  LLM_MODEL_POLICY_GITHUB_OPENAI_GPT_4_1_MINI: ${LLM_MODEL_POLICY_GITHUB_OPENAI_GPT_4_1_MINI:-impact_enabled=false,briefing_max_batch_size=1}
+  LLM_MODEL_POLICY_GITHUB_OPENAI_GPT_4O_MINI: ${LLM_MODEL_POLICY_GITHUB_OPENAI_GPT_4O_MINI:-impact_enabled=false,briefing_max_batch_size=1}
+  LLM_MODEL_POLICY_GITHUB_MISTRAL_AI_MISTRAL_SMALL_2503: ${LLM_MODEL_POLICY_GITHUB_MISTRAL_AI_MISTRAL_SMALL_2503:-impact_enabled=false,briefing_max_batch_size=1}
+  LLM_MODEL_POLICY_GITHUB_META_META_LLAMA_3_1_8B_INSTRUCT: ${LLM_MODEL_POLICY_GITHUB_META_META_LLAMA_3_1_8B_INSTRUCT:-impact_enabled=false,briefing_max_batch_size=1}
+  LLM_MODEL_POLICY_OPENROUTER_OPENAI_GPT_OSS_120B_FREE: ${LLM_MODEL_POLICY_OPENROUTER_OPENAI_GPT_OSS_120B_FREE:-impact_enabled=false,briefing_max_batch_size=1}
+  LLM_MODEL_POLICY_GEMINI_GEMINI_2_5_FLASH: ${LLM_MODEL_POLICY_GEMINI_GEMINI_2_5_FLASH:-impact_enabled=false}
+  LLM_MODEL_POLICY_GEMINI_GEMMA_4_31B_IT: ${LLM_MODEL_POLICY_GEMINI_GEMMA_4_31B_IT:-briefing_enabled=false}
   LLM_MIN_COOLDOWN_MS: ${LLM_MIN_COOLDOWN_MS:-2000}
   LLM_MAX_COOLDOWN_MS: ${LLM_MAX_COOLDOWN_MS:-86400000}
   LLM_RATE_LIMIT_COOLDOWN_MS: ${LLM_RATE_LIMIT_COOLDOWN_MS:-60000}
@@ -84,7 +93,7 @@ x-category-impact-worker-base: &category-impact-worker-base
     IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
     IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
     IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,github:openai/gpt-4.1-mini,github:openai/gpt-4o-mini,groq:openai/gpt-oss-120b,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:openai/gpt-oss-120b:free,openrouter:nvidia/nemotron-3-super-120b-a12b:free,sambanova:gpt-oss-120b,gemini:gemini-2.5-flash,cloudflare:@cf/openai/gpt-oss-120b,cerebras:llama3.1-8b,llmrack:qwen-2.5-7b,openai:gpt-5-nano}
+    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
     IMPACT_BATCH_SIZE: ${CATEGORY_IMPACT_BATCH_SIZE:-4}
     IMPACT_BATCHES_PER_TICK: ${CATEGORY_IMPACT_BATCHES_PER_TICK:-5}
     CATEGORY_IMPACT_CATEGORIES_PER_TICK: ${CATEGORY_IMPACT_CATEGORIES_PER_TICK:-3}
@@ -572,7 +581,7 @@ services:
       IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
       IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
       IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-nvidia:openai/gpt-oss-120b,groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b:free,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openai:gpt-5-nano}
+      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       IMPACT_BATCH_SIZE: ${IMPACT_BATCH_SIZE:-4}
       IMPACT_POLL_INTERVAL_SECONDS: ${IMPACT_POLL_INTERVAL_SECONDS:-300}
       IMPACT_WINDOW_HOURS: ${IMPACT_WINDOW_HOURS:-168}
@@ -860,7 +869,7 @@ services:
       IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
       IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
       IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-nvidia:openai/gpt-oss-120b,groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b:free,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openai:gpt-5-nano}
+      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       IMPACT_BATCH_SIZE: ${IMPACT_BATCH_SIZE:-4}
       IMPACT_POLL_INTERVAL_SECONDS: ${IMPACT_POLL_INTERVAL_SECONDS:-300}
       IMPACT_WINDOW_HOURS: ${IMPACT_WINDOW_HOURS:-168}
@@ -1121,7 +1130,7 @@ services:
       IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
       IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
       IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-nvidia:openai/gpt-oss-120b,groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b:free,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openai:gpt-5-nano}
+      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       IMPACT_BATCH_SIZE: ${CYBERSECURITY_IMPACT_BATCH_SIZE:-1}
       IMPACT_POLL_INTERVAL_SECONDS: ${CYBERSECURITY_IMPACT_POLL_INTERVAL_SECONDS:-300}
       IMPACT_WINDOW_HOURS: ${CYBERSECURITY_IMPACT_WINDOW_HOURS:-168}
@@ -1415,7 +1424,7 @@ services:
       IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
       IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
       IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-nvidia:openai/gpt-oss-120b,groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b:free,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openai:gpt-5-nano}
+      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       IMPACT_BATCH_SIZE: ${CLOUD_INFRASTRUCTURE_IMPACT_BATCH_SIZE:-1}
       IMPACT_POLL_INTERVAL_SECONDS: ${CLOUD_INFRASTRUCTURE_IMPACT_POLL_INTERVAL_SECONDS:-300}
       IMPACT_WINDOW_HOURS: ${CLOUD_INFRASTRUCTURE_IMPACT_WINDOW_HOURS:-168}
@@ -1709,7 +1718,7 @@ services:
       IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
       IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
       IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-nvidia:openai/gpt-oss-120b,groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b:free,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openai:gpt-5-nano}
+      IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       IMPACT_BATCH_SIZE: ${SEMICONDUCTORS_IMPACT_BATCH_SIZE:-1}
       IMPACT_POLL_INTERVAL_SECONDS: ${SEMICONDUCTORS_IMPACT_POLL_INTERVAL_SECONDS:-300}
       IMPACT_WINDOW_HOURS: ${SEMICONDUCTORS_IMPACT_WINDOW_HOURS:-168}
@@ -2059,7 +2068,7 @@ services:
     environment:
       <<: [*db-env, *llm-env, *langfuse-env]
       P0_BRIEFING_MODEL: ${P0_BRIEFING_MODEL:-gpt-5-nano}
-      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,github:openai/gpt-4.1-mini,github:openai/gpt-4o-mini,github:mistral-ai/mistral-small-2503,github:meta/meta-llama-3.1-8b-instruct,groq:openai/gpt-oss-120b,groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-20b,openrouter:openai/gpt-oss-120b:free,openrouter:nvidia/nemotron-3-super-120b-a12b:free,gemini:gemini-3-flash-preview,gemini:gemma-4-31b-it,sambanova:gpt-oss-120b,cloudflare:@cf/openai/gpt-oss-120b,cerebras:llama3.1-8b,llmrack:qwen-2.5-7b,openai:gpt-5-nano}
+      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,github:meta/meta-llama-3.1-8b-instruct,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:openai/gpt-oss-120b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       BRIEFING_OPENAI_FALLBACK_LEVELS: ${BRIEFING_OPENAI_FALLBACK_LEVELS:-P0,P1,P2,P3}
       BRIEFING_OUTPUT_LANGUAGE: ${BRIEFING_OUTPUT_LANGUAGE:-Spanish}
       BRIEFING_VERSION_SUFFIX: ${BRIEFING_VERSION_SUFFIX:-}

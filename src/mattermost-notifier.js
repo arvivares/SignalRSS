@@ -5,6 +5,7 @@ import {
   claimNotification,
   loadPendingBriefings,
   markExistingBriefingsSkipped,
+  markSupersededFailedNotifications,
   saveNotification,
   savePostedNotification,
 } from './mattermost-notification-store.js';
@@ -118,6 +119,12 @@ export async function runMattermostNotifications({ closeConnections = true } = {
   }
 
   try {
+    const superseded = await markSupersededFailedNotifications();
+    const supersededTotal = superseded.postedOrSkipped + superseded.noLongerEligible + superseded.missingCluster;
+    if (supersededTotal > 0) {
+      console.log(`Marked ${supersededTotal} stale Mattermost failures as superseded`);
+    }
+
     for (const destination of destinations) {
       if (!config.mattermostNotifyExisting) {
         const skippedForDestination = await markExistingBriefingsSkipped({ destination, levels });

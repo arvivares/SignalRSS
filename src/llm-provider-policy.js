@@ -21,6 +21,7 @@ const DEFAULT_POLICIES = [
     provider: 'github',
     model: 'openai/gpt-4.1-mini',
     rpm: () => config.llmGithubLowRpm,
+    impactEnabled: false,
     impactMaxBatchSize: () => config.llmGithubImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmGithubBriefingMaxBatchSize,
   },
@@ -28,6 +29,7 @@ const DEFAULT_POLICIES = [
     provider: 'github',
     model: 'openai/gpt-4o-mini',
     rpm: () => config.llmGithubLowRpm,
+    impactEnabled: false,
     impactMaxBatchSize: () => config.llmGithubImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmGithubBriefingMaxBatchSize,
   },
@@ -35,6 +37,7 @@ const DEFAULT_POLICIES = [
     provider: 'github',
     model: 'mistral-ai/mistral-small-2503',
     rpm: () => config.llmGithubLowRpm,
+    impactEnabled: false,
     impactMaxBatchSize: () => config.llmGithubImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmGithubBriefingMaxBatchSize,
   },
@@ -42,27 +45,28 @@ const DEFAULT_POLICIES = [
     provider: 'github',
     model: 'meta/meta-llama-3.1-8b-instruct',
     rpm: () => config.llmGithubLowRpm,
+    impactEnabled: false,
     impactMaxBatchSize: () => config.llmGithubImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmGithubBriefingMaxBatchSize,
   },
   {
     provider: 'groq',
     model: 'openai/gpt-oss-120b',
-    rpm: 30,
+    rpm: 10,
     tpm: 8000,
     tpd: 200000,
   },
   {
     provider: 'groq',
     model: 'openai/gpt-oss-20b',
-    rpm: 30,
+    rpm: 10,
     tpm: 8000,
     tpd: 200000,
   },
   {
     provider: 'groq',
     model: 'llama-3.3-70b-versatile',
-    rpm: 30,
+    rpm: 10,
     tpm: 12000,
     tpd: 100000,
   },
@@ -71,6 +75,7 @@ const DEFAULT_POLICIES = [
     model: 'openai/gpt-oss-120b:free',
     rpm: () => config.llmOpenRouterFreeRpm,
     rpd: () => config.llmOpenRouterFreeRpd,
+    impactEnabled: false,
     impactMaxBatchSize: () => config.llmOpenRouterImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmOpenRouterBriefingMaxBatchSize,
   },
@@ -87,14 +92,16 @@ const DEFAULT_POLICIES = [
     model: 'gpt-oss-120b',
     rpm: () => config.llmSambanovaFreeRpm,
     tpd: 200000,
-    impactEnabled: true,
-    // Current logs show >95% briefing failures for this model.
+    // Current logs show high 429/error rates for both operations.
+    impactEnabled: false,
     briefingEnabled: false,
   },
   {
     provider: 'gemini',
     model: 'gemini-2.5-flash',
     rpm: () => config.llmGeminiRpm,
+    // Current logs show quota exhaustion and a low impact success rate.
+    impactEnabled: false,
   },
   {
     provider: 'gemini',
@@ -107,11 +114,15 @@ const DEFAULT_POLICIES = [
     provider: 'gemini',
     model: 'gemma-4-31b-it',
     rpm: () => config.llmGeminiRpm,
+    // Current logs show unstable briefing generation for this model.
+    briefingEnabled: false,
   },
   {
     provider: 'cloudflare',
     model: '@cf/openai/gpt-oss-120b',
     rpm: 10,
+    // The free allocation is too small for the nominal pipeline.
+    enabled: false,
   },
   {
     provider: 'cerebras',
@@ -123,6 +134,8 @@ const DEFAULT_POLICIES = [
     model: 'qwen-2.5-7b',
     rpm: () => config.llmRackRpm,
     tpd: () => config.llmRackTokensPerDay,
+    // Current logs show quota exhaustion with no successful requests.
+    enabled: false,
     impactMaxBatchSize: () => config.llmRackImpactMaxBatchSize,
     briefingMaxBatchSize: () => config.llmRackBriefingMaxBatchSize,
   },

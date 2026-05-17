@@ -86,6 +86,84 @@ export async function markExistingBriefingsSkipped({ destination, levels }) {
   return rowCount;
 }
 
+export async function markSupersededFailedNotifications() {
+  const postedOrSkipped = await pool.query(`
+    UPDATE mattermost_notifications failed
+    SET status = 'superseded',
+        error = coalesce(failed.error, '') || ' | superseded by existing posted/skipped notification',
+        updated_at = NOW()
+    WHERE failed.status = 'failed'
+      AND EXISTS (
+        SELECT 1
+        FROM mattermost_notifications done
+        WHERE done.id <> failed.id
+          AND done.locale = failed.locale
+          AND done.status = ANY($1::text[])
+          AND (
+            (
+              failed.story_hash IS NOT NULL
+              AND done.story_hash = failed.story_hash
+            )
+            OR (
+              done.cluster_id = failed.cluster_id
+              AND done.briefing_type = failed.briefing_type
+              AND done.destination_hash = failed.destination_hash
+            )
+          )
+      )
+  `, [FINAL_STATUSES]);
+
+  const noLongerEligible = await pool.query(`
+    UPDATE mattermost_notifications mn
+    SET status = 'superseded',
+        error = coalesce(mn.error, '') || ' | superseded because briefing is no longer Mattermost-eligible',
+        updated_at = NOW()
+    FROM story_clusters sc
+    JOIN topic_categories tc ON tc.id = sc.category_id
+    LEFT JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
+    WHERE mn.status = 'failed'
+      AND mn.cluster_id = sc.id
+      AND (
+        cis.cluster_id IS NULL
+        OR mn.briefing_type <> lower(cis.impact_level) || '-cluster-briefing'
+        OR cis.impact_level <> ANY($1::text[])
+        OR tc.slug <> ANY($2::text[])
+        OR sc.latest_published_at < NOW() - ($3::int * INTERVAL '1 hour')
+        OR sc.latest_published_at > NOW()
+        OR NOT EXISTS (
+          SELECT 1
+          FROM cluster_briefings cb
+          WHERE cb.cluster_id = sc.id
+            AND cb.locale = mn.locale
+            AND cb.briefing_type = mn.briefing_type
+            AND cb.input_hash = mn.input_hash
+        )
+      )
+  `, [config.mattermostLevels, config.mattermostCategorySlugs, config.mattermostWindowHours]);
+
+  const missingCluster = await pool.query(`
+    UPDATE mattermost_notifications mn
+    SET status = 'superseded',
+        error = coalesce(mn.error, '') || ' | superseded because source cluster no longer exists',
+        updated_at = NOW()
+    WHERE mn.status = 'failed'
+      AND (
+        mn.cluster_id IS NULL
+        OR NOT EXISTS (
+          SELECT 1
+          FROM story_clusters sc
+          WHERE sc.id = mn.cluster_id
+        )
+      )
+  `);
+
+  return {
+    postedOrSkipped: postedOrSkipped.rowCount,
+    noLongerEligible: noLongerEligible.rowCount,
+    missingCluster: missingCluster.rowCount,
+  };
+}
+
 export async function loadPendingBriefings({ destination, levels }) {
   const { rows } = await pool.query(`
     WITH pending_briefings AS (
