@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { pool } from './db.js';
 import { filterBriefingRows } from './briefing-exclusions.js';
 import { configuredLlmModelPolicies } from './llm-provider-policy.js';
+import { impactEligibilitySql } from './impact-eligibility.js';
 
 export async function buildFeedStats() {
   const [{ rows: totals }, { rows: countries }, { rows: articles }] = await Promise.all([
@@ -126,12 +127,20 @@ export async function buildDashboardMetrics() {
                 OR j.locked_at < NOW() - ($2::int * INTERVAL '1 minute')
               )
           )::int AS impact_running_stale,
-          count(*) FILTER (WHERE j.status = 'failed')::int AS impact_failed
+          count(*) FILTER (WHERE j.status = 'failed')::int AS impact_failed,
+          min(sc.latest_published_at) FILTER (WHERE j.status IN ('pending', 'running')) AS oldest_pending_latest_published_at,
+          max(sc.latest_published_at) FILTER (WHERE j.status IN ('pending', 'running')) AS newest_pending_latest_published_at
         FROM cluster_impact_jobs j
         JOIN story_clusters sc ON sc.id = j.cluster_id
         JOIN topic_categories tc ON tc.id = sc.category_id
         WHERE sc.latest_published_at >= NOW() - INTERVAL '7 days'
           AND ($1::timestamptz IS NULL OR sc.latest_published_at >= $1::timestamptz)
+          ${impactEligibilitySql({
+            windowDefaultParam: 3,
+            windowMapParam: 4,
+            maxAgeMapParam: 5,
+            maxAgeDefaultParam: 6,
+          })}
         GROUP BY tc.slug
       )
       SELECT
@@ -140,6 +149,8 @@ export async function buildDashboardMetrics() {
         coalesce(ij.impact_pending, 0)::int AS impact_pending,
         coalesce(ij.impact_running, 0)::int AS impact_running,
         coalesce(ij.impact_failed, 0)::int AS impact_failed,
+        ij.oldest_pending_latest_published_at,
+        ij.newest_pending_latest_published_at,
         count(rc.id) FILTER (
           WHERE cis.cluster_id IS NOT NULL
             AND (
@@ -156,9 +167,22 @@ export async function buildDashboardMetrics() {
         ON cb.cluster_id = rc.id
         AND cb.locale = 'es'
         AND cb.briefing_type = lower(cis.impact_level) || '-cluster-briefing'
-      GROUP BY tc.slug, ij.impact_pending, ij.impact_running, ij.impact_failed
+      GROUP BY
+        tc.slug,
+        ij.impact_pending,
+        ij.impact_running,
+        ij.impact_failed,
+        ij.oldest_pending_latest_published_at,
+        ij.newest_pending_latest_published_at
       ORDER BY briefing_pending DESC, impact_pending DESC, tc.slug
-    `, [config.impactMinPublishedAt || config.briefingMinPublishedAt || null, config.impactJobStaleMinutes]),
+    `, [
+      config.impactMinPublishedAt || config.briefingMinPublishedAt || null,
+      config.impactJobStaleMinutes,
+      config.impactWindowHours,
+      JSON.stringify(config.impactWindowHoursByCategory || {}),
+      JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+      config.impactMaxClusterAgeHours,
+    ]),
     pool.query(`
       SELECT
         tc.slug AS category,
@@ -692,13 +716,30 @@ export async function buildOpsHealth() {
           WHERE j.status = 'failed'
             AND j.attempts >= $2
         )::int AS failed_final,
-        min(j.updated_at) AS oldest_updated_at
+        min(j.updated_at) AS oldest_updated_at,
+        min(sc.latest_published_at) AS oldest_latest_published_at,
+        max(sc.latest_published_at) AS newest_latest_published_at
       FROM cluster_impact_jobs j
       JOIN story_clusters sc ON sc.id = j.cluster_id
       JOIN topic_categories tc ON tc.id = sc.category_id
+      WHERE ($7::timestamptz IS NULL OR sc.latest_published_at >= $7::timestamptz)
+        ${impactEligibilitySql({
+          windowDefaultParam: 3,
+          windowMapParam: 4,
+          maxAgeMapParam: 5,
+          maxAgeDefaultParam: 6,
+        })}
       GROUP BY tc.slug, j.status
       ORDER BY tc.slug, j.status
-    `, [config.impactJobStaleMinutes, config.impactJobMaxAttempts]),
+    `, [
+      config.impactJobStaleMinutes,
+      config.impactJobMaxAttempts,
+      config.impactWindowHours,
+      JSON.stringify(config.impactWindowHoursByCategory || {}),
+      JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+      config.impactMaxClusterAgeHours,
+      config.impactMinPublishedAt || null,
+    ]),
     pool.query(`
       SELECT
         tc.slug AS category,

@@ -178,10 +178,14 @@ function renderBacklogSpotlight(rows = []) {
         failed ? `${formatNumber(failed)} fallidos` : '',
         `${formatNumber(briefing)} briefs`,
       ].filter(Boolean).join(' · ');
+      const pendingWindow = row.oldest_pending_latest_published_at
+        ? `Publicadas: ${formatUtc(row.oldest_pending_latest_published_at)} a ${formatUtc(row.newest_pending_latest_published_at)}`
+        : '';
       return `<div class="spotlight-row">
         <div>
           <strong>${escapeHtml(row.category)}</strong>
           <span>${escapeHtml(details)}</span>
+          ${pendingWindow ? `<span>${escapeHtml(pendingWindow)}</span>` : ''}
         </div>
         <div class="spotlight-meter" aria-label="${escapeHtml(row.category)} backlog">
           <span style="width:${Math.max(6, Math.round((total / max) * 100))}%"></span>
@@ -290,10 +294,13 @@ function renderBacklogStatus(rows) {
         impactFailed ? `${formatNumber(impactFailed)} fallidos` : '',
         `${formatNumber(briefingPending)} briefs`,
       ].filter(Boolean).join(' · ');
+      const pendingWindow = row.oldest_pending_latest_published_at
+        ? ` · Publicadas: ${formatUtc(row.oldest_pending_latest_published_at)} a ${formatUtc(row.newest_pending_latest_published_at)}`
+        : '';
       return `<div class="status-row">
         <div>
           <strong>${escapeHtml(row.category)}</strong>
-          <span>${formatNumber(row.clusters)} clusters · ${escapeHtml(state)}</span>
+          <span>${formatNumber(row.clusters)} clusters · ${escapeHtml(state)}${pendingWindow ? escapeHtml(pendingWindow) : ''}</span>
         </div>
         <div class="${impactFailed || staleRunning ? 'danger' : done ? 'ok' : 'warn'}">${escapeHtml(detail)}</div>
       </div>`;

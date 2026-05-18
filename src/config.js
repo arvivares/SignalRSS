@@ -4,6 +4,7 @@ import {
   keyValueEnv,
   listEnv,
   numberEnv,
+  numberMapEnv,
 } from './config-env.js';
 
 export const config = {
@@ -1080,6 +1081,9 @@ export const config = {
   categoryImpactCategoriesPerTick: numberEnv('CATEGORY_IMPACT_CATEGORIES_PER_TICK', 3),
   impactPollIntervalSeconds: Number(process.env.IMPACT_POLL_INTERVAL_SECONDS || 300),
   impactWindowHours: Number(process.env.IMPACT_WINDOW_HOURS || 168),
+  impactWindowHoursByCategory: numberMapEnv('IMPACT_WINDOW_HOURS_BY_CATEGORY', {}),
+  impactMaxClusterAgeHours: numberEnv('IMPACT_MAX_CLUSTER_AGE_HOURS', 0),
+  impactMaxClusterAgeHoursByCategory: numberMapEnv('IMPACT_MAX_CLUSTER_AGE_HOURS_BY_CATEGORY', {}),
   impactMinPublishedAt: process.env.IMPACT_MIN_PUBLISHED_AT || '',
   impactCategorySlug: process.env.IMPACT_CATEGORY_SLUG || 'artificial-intelligence',
   impactRunUntilEmpty: process.env.IMPACT_RUN_UNTIL_EMPTY === 'true',

@@ -21,6 +21,7 @@ import {
 import { cleanText, hashInput, hostFromUrl } from './text-utils.js';
 import { isBriefingExcluded } from './briefing-exclusions.js';
 import { capImpactForEvidence } from './evidence-quality.js';
+import { impactEligibilitySql, impactMaxClusterAgeExpression, impactWindowHoursExpression } from './impact-eligibility.js';
 import {
   observeOpenAIClient,
   shutdownLangfuseTracing,
@@ -957,6 +958,9 @@ export async function enqueueImpactJobs() {
   const params = [
     config.embeddingModel,
     config.impactWindowHours,
+    JSON.stringify(config.impactWindowHoursByCategory || {}),
+    JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+    config.impactMaxClusterAgeHours,
   ];
   let categoryFilter = '';
   let minPublishedAtFilter = '';
@@ -971,14 +975,24 @@ export async function enqueueImpactJobs() {
     categoryFilter = `AND tc.slug = $${params.length}`;
   }
 
-  if (config.impactMinPublishedAt) {
-    await pool.query(`
-      DELETE FROM cluster_impact_jobs j
-      USING story_clusters sc
-      WHERE sc.id = j.cluster_id
-        AND sc.latest_published_at < $1::timestamptz
-    `, [config.impactMinPublishedAt]);
-  }
+  await pool.query(`
+    DELETE FROM cluster_impact_jobs j
+    USING story_clusters sc
+    JOIN topic_categories tc ON tc.id = sc.category_id
+    WHERE sc.id = j.cluster_id
+      AND (
+        ($1::timestamptz IS NOT NULL AND sc.latest_published_at < $1::timestamptz)
+        OR sc.latest_published_at < NOW() - (${impactWindowHoursExpression('tc')} * INTERVAL '1 hour')
+        OR (${impactMaxClusterAgeExpression('tc')} > 0
+          AND sc.created_at < NOW() - (${impactMaxClusterAgeExpression('tc')} * INTERVAL '1 hour'))
+      )
+  `, [
+    config.impactMinPublishedAt || null,
+    config.impactWindowHours,
+    JSON.stringify(config.impactWindowHoursByCategory || {}),
+    JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+    config.impactMaxClusterAgeHours,
+  ]);
 
   try {
     await pool.query(`
@@ -988,14 +1002,8 @@ export async function enqueueImpactJobs() {
       JOIN topic_categories tc ON tc.id = sc.category_id
       LEFT JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
       WHERE sc.embedding_model = $1
-        AND sc.latest_published_at >= NOW() - ($2::int * INTERVAL '1 hour')
+        ${impactEligibilitySql()}
         ${minPublishedAtFilter}
-        AND sc.latest_published_at <= NOW()
-        AND EXISTS (
-          SELECT 1
-          FROM cluster_articles ca
-          WHERE ca.cluster_id = sc.id
-        )
         AND (
           cis.cluster_id IS NULL
           OR cis.scored_at < sc.updated_at
@@ -1032,6 +1040,19 @@ export async function enqueueImpactJobs() {
   `, [config.impactJobMaxAttempts, config.impactJobRetryMinutes]);
 
   await pool.query(`
+    UPDATE cluster_impact_jobs
+    SET status = 'pending',
+        attempts = 0,
+        locked_by = NULL,
+        locked_at = NULL,
+        updated_at = NOW()
+    WHERE status = 'failed'
+      AND attempts >= $1
+      AND last_error LIKE 'All impact scoring fallbacks failed:%'
+      AND updated_at < NOW() - ($2::int * INTERVAL '1 minute')
+  `, [config.impactJobMaxAttempts, config.impactJobRetryMinutes]);
+
+  await pool.query(`
     UPDATE cluster_impact_jobs j
     SET status = 'pending',
         locked_by = NULL,
@@ -1040,18 +1061,12 @@ export async function enqueueImpactJobs() {
         completed_at = NULL
     FROM story_clusters sc
     LEFT JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
-    JOIN topic_categories tc ON tc.id = sc.category_id
-    WHERE j.cluster_id = sc.id
-      AND j.status = 'done'
-      AND sc.embedding_model = $1
-      AND sc.latest_published_at >= NOW() - ($2::int * INTERVAL '1 hour')
+      JOIN topic_categories tc ON tc.id = sc.category_id
+      WHERE j.cluster_id = sc.id
+        AND j.status = 'done'
+        AND sc.embedding_model = $1
+      ${impactEligibilitySql()}
       ${minPublishedAtFilter}
-      AND sc.latest_published_at <= NOW()
-      AND EXISTS (
-        SELECT 1
-        FROM cluster_articles ca
-        WHERE ca.cluster_id = sc.id
-      )
       AND (
         cis.cluster_id IS NULL
         OR cis.scored_at < sc.updated_at
@@ -1065,8 +1080,9 @@ async function claimImpactJobIds() {
   const params = [
     config.embeddingModel,
     config.impactWindowHours,
-    config.impactBatchSize,
-    WORKER_ID,
+    JSON.stringify(config.impactWindowHoursByCategory || {}),
+    JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+    config.impactMaxClusterAgeHours,
   ];
   let categoryFilter = '';
   let minPublishedAtFilter = '';
@@ -1080,6 +1096,11 @@ async function claimImpactJobIds() {
     params.push(config.impactCategorySlug);
     categoryFilter = `AND tc.slug = $${params.length}`;
   }
+
+  params.push(config.impactBatchSize);
+  const batchSizeParam = `$${params.length}`;
+  params.push(WORKER_ID);
+  const workerParam = `$${params.length}`;
 
   const { rows } = await pool.query(`
     WITH ranked_jobs AS (
@@ -1101,14 +1122,8 @@ async function claimImpactJobIds() {
       LEFT JOIN cluster_impact_scores cis ON cis.cluster_id = sc.id
       WHERE j.status = 'pending'
         AND sc.embedding_model = $1
-        AND sc.latest_published_at >= NOW() - ($2::int * INTERVAL '1 hour')
+        ${impactEligibilitySql()}
         ${minPublishedAtFilter}
-        AND sc.latest_published_at <= NOW()
-        AND EXISTS (
-          SELECT 1
-          FROM cluster_articles ca
-          WHERE ca.cluster_id = sc.id
-        )
         ${categoryFilter}
     ),
     next_jobs AS (
@@ -1121,12 +1136,12 @@ async function claimImpactJobIds() {
         r.latest_published_at DESC NULLS LAST,
         r.updated_at ASC,
         j.cluster_id
-      LIMIT $3
+      LIMIT ${batchSizeParam}
       FOR UPDATE OF j SKIP LOCKED
     )
     UPDATE cluster_impact_jobs j
     SET status = 'running',
-        locked_by = $4,
+        locked_by = ${workerParam},
         locked_at = NOW(),
         attempts = attempts + 1,
         updated_at = NOW()

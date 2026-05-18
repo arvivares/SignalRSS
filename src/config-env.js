@@ -37,3 +37,9 @@ export function keyValueEnv(name) {
     })
     .filter(Boolean));
 }
+
+export function numberMapEnv(name, fallback = {}) {
+  return Object.fromEntries(Object.entries(keyValueEnv(name))
+    .map(([key, value]) => [key, Number(value)])
+    .filter(([, value]) => Number.isFinite(value)));
+}

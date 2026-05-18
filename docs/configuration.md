@@ -46,6 +46,9 @@ Category-specific thresholds should live in `.env.example` and `.env`, not in on
 | `IMPACT_MODEL_FALLBACKS` | Ordered provider/model chain for impact scoring. |
 | `BRIEFING_MODEL_FALLBACKS` | Ordered provider/model chain for brief generation. |
 | `IMPACT_WINDOW_HOURS` | Impact processing window. |
+| `IMPACT_WINDOW_HOURS_BY_CATEGORY` | Category-specific impact windows, such as `consumer-electronics:24`. |
+| `IMPACT_MAX_CLUSTER_AGE_HOURS` | Global cap for how long a cluster can remain impact-eligible. `0` disables it. |
+| `IMPACT_MAX_CLUSTER_AGE_HOURS_BY_CATEGORY` | Category-specific cluster age caps, such as `consumer-electronics:72`. |
 | `BRIEFING_OUTPUT_LANGUAGE` | Target language for generated briefs. |
 | `CATEGORY_BRIEFING_EXCLUDE_LEVELS` | Category/priority pairs to skip, such as `consumer-electronics:P3`. |
 | `BRIEFING_OPENAI_FALLBACK_LEVELS` | Priority levels allowed to use paid OpenAI fallback. |

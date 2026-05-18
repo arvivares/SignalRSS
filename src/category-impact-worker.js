@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { closeDb, pool, waitForDb } from './db.js';
 import { enqueueImpactJobs, runImpactScoring } from './score-impact.js';
 import { loadActiveCategorySlugs, withImpactCategory } from './category-runtime.js';
+import { impactEligibilitySql } from './impact-eligibility.js';
 
 let shuttingDown = false;
 
@@ -14,6 +15,9 @@ async function loadImpactWorkItems() {
     categories,
     config.embeddingModel,
     config.impactWindowHours,
+    JSON.stringify(config.impactWindowHoursByCategory || {}),
+    JSON.stringify(config.impactMaxClusterAgeHoursByCategory || {}),
+    config.impactMaxClusterAgeHours,
   ];
   let minPublishedAtFilter = '';
 
@@ -33,14 +37,13 @@ async function loadImpactWorkItems() {
     WHERE tc.slug = ANY($1::text[])
       AND j.status = 'pending'
       AND sc.embedding_model = $2
-      AND sc.latest_published_at >= NOW() - ($3::int * INTERVAL '1 hour')
+      ${impactEligibilitySql({
+        windowDefaultParam: 3,
+        windowMapParam: 4,
+        maxAgeMapParam: 5,
+        maxAgeDefaultParam: 6,
+      })}
       ${minPublishedAtFilter}
-      AND sc.latest_published_at <= NOW()
-      AND EXISTS (
-        SELECT 1
-        FROM cluster_articles ca
-        WHERE ca.cluster_id = sc.id
-      )
     GROUP BY tc.slug
   `, params);
 
