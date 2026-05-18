@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
-import { closeDb, pool } from './db.js';
+import { closeDb, pool, waitForDb } from './db.js';
 import { enqueueImpactJobs, runImpactScoring } from './score-impact.js';
 import { loadActiveCategorySlugs, withImpactCategory } from './category-runtime.js';
 
@@ -101,6 +101,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main() {
+  await waitForDb({ component: 'category-impact-worker' });
   withImpactCategory('');
   console.log(
     `Category impact worker polling every ${config.impactPollIntervalSeconds}s; ` +

@@ -1,9 +1,10 @@
 import { config } from './config.js';
-import { closeDb } from './db.js';
+import { closeDb, waitForDb } from './db.js';
 import { runCrossCategoryAdjudication } from './cross-category-adjudication.js';
 import { sleep } from './timing-utils.js';
 
 async function main() {
+  await waitForDb({ component: 'cross-category-adjudication-worker' });
   console.log(`Cross-category adjudication worker polling every ${config.crossCategoryAdjudicationPollIntervalSeconds}s`);
   while (true) {
     try {

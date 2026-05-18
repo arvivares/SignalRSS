@@ -82,7 +82,7 @@ function candidateInput(candidate) {
   };
 }
 
-function legacyP0ClusterInput(cluster) {
+function p0ClusterInput(cluster) {
   return {
     cluster_id: cluster.id,
     title: cleanText(cluster.title).slice(0, 240),
@@ -99,7 +99,7 @@ function legacyP0ClusterInput(cluster) {
   };
 }
 
-function legacyP0CandidateInput(candidate) {
+function p0CandidateInput(candidate) {
   return {
     candidate_id: [candidate.left.id, candidate.right.id].sort().join(':'),
     category_slug: candidate.left.category_slug,
@@ -110,12 +110,12 @@ function legacyP0CandidateInput(candidate) {
       left_title: cleanText(candidate.strongest_article_match.left_title).slice(0, 240),
       right_title: cleanText(candidate.strongest_article_match.right_title).slice(0, 240),
     },
-    left_cluster: legacyP0ClusterInput(candidate.left),
-    right_cluster: legacyP0ClusterInput(candidate.right),
+    left_cluster: p0ClusterInput(candidate.left),
+    right_cluster: p0ClusterInput(candidate.right),
   };
 }
 
-function legacyThresholdHash(settings) {
+function thresholdHash(settings) {
   if (settings.level === 'P0') {
     return {
       min_centroid_similarity: settings.thresholds.p0_p0,
@@ -141,8 +141,8 @@ function inputHash(settings, candidate) {
   return hashInput(JSON.stringify({
     version: settings.version,
     model: settings.model,
-    thresholds: legacyThresholdHash(settings),
-    candidate: settings.level === 'P0' ? legacyP0CandidateInput(candidate) : candidateInput(candidate),
+    thresholds: thresholdHash(settings),
+    candidate: settings.level === 'P0' ? p0CandidateInput(candidate) : candidateInput(candidate),
   }));
 }
 

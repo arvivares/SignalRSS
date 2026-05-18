@@ -5,6 +5,7 @@ import { handleAppRoutes } from './app-routes.js';
 import { safeErrorStack } from './log-utils.js';
 import { sendJson } from './response-utils.js';
 import { serveGeneratedThumbnail } from './static-thumbnail-service.js';
+import { waitForDb } from './db.js';
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -40,6 +41,14 @@ server.maxHeadersCount = 100;
 
 setInterval(pruneRateLimitBuckets, Math.max(1000, config.apiWriteRateLimitWindowMs)).unref();
 
-server.listen(config.apiPort, () => {
-  console.log(`SignalRSS API listening on :${config.apiPort}`);
+async function main() {
+  await waitForDb({ component: 'api' });
+  server.listen(config.apiPort, () => {
+    console.log(`SignalRSS API listening on :${config.apiPort}`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });

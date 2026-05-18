@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
+import { closeDb, waitForDb } from './db.js';
 import { cutoffDate, fetchAndStoreFeed, loadFeeds } from './ingest.js';
 
 async function pollOnce() {
@@ -16,13 +17,15 @@ async function pollOnce() {
 }
 
 async function main() {
+  await waitForDb({ component: 'worker' });
   while (true) {
     await pollOnce();
     await sleep(config.workerPollIntervalSeconds * 1000);
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(error);
+  await closeDb().catch(() => {});
   process.exit(1);
 });

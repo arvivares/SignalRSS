@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import os from 'node:os';
 import { config } from './config.js';
-import { closeDb, pool } from './db.js';
+import { closeDb, pool, waitForDb } from './db.js';
 import {
   availablePriorityBriefingProviders,
   cleanupBriefingClaimsOlderThan,
@@ -167,6 +167,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main() {
+  await waitForDb({ component: 'category-briefing-worker' });
   const interval = pollIntervalSeconds();
   const concurrency = config.categoryBriefingConcurrency;
   const releasedClaims = await cleanupBriefingClaimsOlderThan(config.briefingStartupClaimCleanupMinutes);

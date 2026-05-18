@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
-import { closeDb } from './db.js';
+import { closeDb, waitForDb } from './db.js';
 import { shutdownLangfuseTracing } from './langfuse.js';
 import { runClassification } from './classify-articles.js';
 
@@ -29,6 +29,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main() {
+  await waitForDb({ component: 'classifier-worker' });
   while (!shuttingDown) {
     await pollOnce();
     await sleep(config.classifierPollIntervalSeconds * 1000);

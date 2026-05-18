@@ -1,8 +1,10 @@
 import { config } from './config.js';
+import { waitForDb } from './db.js';
 import { runMattermostNotifications } from './mattermost-notifier.js';
 import { sleep } from './timing-utils.js';
 
 async function main() {
+  await waitForDb({ component: 'mattermost-worker' });
   console.log(`Mattermost worker polling every ${config.mattermostPollIntervalSeconds}s`);
 
   while (true) {

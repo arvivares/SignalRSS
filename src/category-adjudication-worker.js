@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
-import { closeDb } from './db.js';
+import { closeDb, waitForDb } from './db.js';
 import { hasPriorityAdjudicationWork, runPriorityClusterAdjudication } from './adjudicate-priority-clusters.js';
 import { loadActiveCategorySlugs, withAdjudicationCategory } from './category-runtime.js';
 import { PRIORITY_LEVELS } from './priority-config.js';
@@ -45,6 +45,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main() {
+  await waitForDb({ component: 'category-adjudication-worker' });
   const interval = pollIntervalSeconds();
   console.log(`Category adjudication worker polling every ${interval}s`);
   while (!shuttingDown) {

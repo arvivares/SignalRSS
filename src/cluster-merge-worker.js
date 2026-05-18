@@ -1,8 +1,10 @@
 import { config } from './config.js';
+import { waitForDb } from './db.js';
 import { runClusterMerge } from './merge-clusters.js';
 import { sleep } from './timing-utils.js';
 
 async function main() {
+  await waitForDb({ component: 'cluster-merge-worker' });
   console.log(`Cluster merge worker polling every ${config.clusterMergePollIntervalSeconds}s`);
 
   while (true) {

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
-import { closeDb } from './db.js';
+import { closeDb, waitForDb } from './db.js';
 import { hasClusteringWork, runClustering } from './cluster-articles.js';
 import { loadActiveCategorySlugs, withClusterCategory } from './category-runtime.js';
 
@@ -33,6 +33,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main() {
+  await waitForDb({ component: 'category-cluster-worker' });
   console.log(`Category cluster worker polling every ${config.clusterPollIntervalSeconds}s`);
   while (!shuttingDown) {
     await tick();

@@ -31,7 +31,6 @@ The expected long-running services are:
 
 Avoid leaving temporary drain services running after a backlog is cleared.
 
-Legacy one-shot and category-specific workers remain behind Compose profiles for manual recovery only. They are not part of the nominal stack; prefer the generic `category-*` workers unless you are intentionally replaying an old maintenance path.
 
 ## Check readiness
 
