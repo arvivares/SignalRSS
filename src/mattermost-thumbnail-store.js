@@ -7,7 +7,12 @@ import { cleanText } from './text-utils.js';
 import { elapsedMs, formatDuration, nowMs, sleep } from './timing-utils.js';
 
 export function generatedThumbnailFilename(clusterId) {
-  return `${clusterId}.png`;
+  const promptVersion = cleanText(config.mattermostGeneratedThumbnailPromptVersion || 'default')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'default';
+  return `${clusterId}.${promptVersion}.png`;
 }
 
 export function generatedThumbnailPath(clusterId) {

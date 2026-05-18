@@ -37,20 +37,51 @@ function generatedImageAspectRatio() {
 
 function buildGeneratedThumbnailPrompt(briefing) {
   return [
+    'CRITICAL IMAGE RULE: generate a wordless image.',
+    'The final image must contain absolutely no text: no letters, no numbers, no words, no headlines, no captions, no labels, no UI text, no code, no charts with labels, no logos, no watermarks, no typographic marks, no pseudo-text, no glyph-like scratches.',
+    'Avoid any object that normally invites text: screens, phones with interfaces, dashboards, documents, newspapers, magazines, signs, posters, slides, badges, certificates, product boxes, chat bubbles, terminals, code editors, maps, tables, and labeled charts.',
+    'If a visual surface would normally contain text, keep it blank, abstract, blurred, unmarked, or replace it with non-text geometric shapes.',
     'Use case: editorial technology news image',
     'Asset type: landscape Mattermost news thumbnail',
-    'Primary request: create a polished editorial image for a technology news brief.',
+    'Primary request: create a polished editorial image for a technology news brief, using only objects, lighting, composition, color, and metaphor.',
     'The title and summary below are private context for concept selection only. Do not render, quote, copy, imitate, or visually represent any words from them inside the image.',
     `Context title, not image text: ${cleanText(briefing.title).slice(0, 240)}`,
     `Context summary, not image text: ${cleanText(briefing.summary).slice(0, 900)}`,
     'Style/medium: premium digital editorial illustration, cinematic but factual, modern technology journalism.',
-    'Composition/framing: landscape composition, strong central visual metaphor, clear silhouettes and recognizable objects at small thumbnail size.',
+    'Composition/framing: landscape composition, strong central visual metaphor, clear silhouettes and recognizable non-text objects at small thumbnail size.',
     'Lighting/mood: crisp, high contrast, serious news tone, not playful.',
     'Color palette: restrained technology palette with one strong accent color, avoid generic purple gradients.',
-    'Hard constraints: image must contain zero text. No letters, no numbers, no words, no headlines, no captions, no labels, no symbols that resemble writing, no UI text, no logos, no watermarks.',
-    'Do not create newspapers, screens, signs, dashboards, charts, code editors, terminals, chat bubbles, documents, slides, posters, badges, or product boxes if they contain or imply readable text.',
-    'Avoid: clutter, tiny details, stock-photo cliches, misleading product branding, distorted hands, glyph-like marks, pseudo-text, fake interface text, typographic shapes.',
+    'Safe motifs: abstract silicon structures, unlabeled server racks, blank glass panels, light beams, network nodes, machines, data-center corridors, chips without markings, locks, clouds, satellites, robots, vehicles, laboratory equipment, or financial/enterprise metaphors without text.',
+    'Avoid: clutter, tiny details, stock-photo cliches, misleading product branding, distorted hands, fake interface text, typographic shapes.',
   ].join('\n');
+}
+
+function generatedThumbnailNegativePrompt() {
+  return [
+    'text',
+    'letters',
+    'numbers',
+    'words',
+    'headline',
+    'caption',
+    'label',
+    'logo',
+    'watermark',
+    'signature',
+    'newspaper',
+    'document',
+    'poster',
+    'sign',
+    'screen text',
+    'UI text',
+    'code',
+    'terminal',
+    'dashboard labels',
+    'chart labels',
+    'typography',
+    'pseudo-text',
+    'glyphs',
+  ].join(', ');
 }
 
 function estimatedPromptTokens(prompt) {
@@ -162,7 +193,7 @@ function nvidiaImageData(body = {}) {
 }
 
 function nvidiaImagePrompt(prompt) {
-  return cleanText(prompt).slice(0, 800);
+  return cleanText(prompt).slice(0, 1200);
 }
 
 function nvidiaImageRequestBody({ endpoint, prompt }) {
@@ -173,6 +204,7 @@ function nvidiaImageRequestBody({ endpoint, prompt }) {
       mode: 'text-to-image',
       model: 'sd3',
       prompt: safePrompt,
+      negative_prompt: generatedThumbnailNegativePrompt(),
       aspect_ratio: generatedImageAspectRatio(),
       cfg_scale: 5,
       seed: 0,
@@ -184,6 +216,7 @@ function nvidiaImageRequestBody({ endpoint, prompt }) {
   if (normalizedEndpoint.includes('stabilityai/stable-diffusion-xl')) {
     return {
       text_prompts: [{ text: safePrompt, weight: 1 }],
+      negative_prompt: generatedThumbnailNegativePrompt(),
       width: 1024,
       height: 1024,
       cfg_scale: 5,
@@ -199,6 +232,7 @@ function nvidiaImageRequestBody({ endpoint, prompt }) {
   if (normalizedEndpoint.includes('black-forest-labs/flux')) {
     return {
       prompt: safePrompt,
+      negative_prompt: generatedThumbnailNegativePrompt(),
       width: config.mattermostImageNvidiaWidth,
       height: config.mattermostImageNvidiaHeight,
       cfg_scale: 1,
@@ -210,6 +244,7 @@ function nvidiaImageRequestBody({ endpoint, prompt }) {
 
   return {
     prompt: safePrompt,
+    negative_prompt: generatedThumbnailNegativePrompt(),
     width: config.mattermostImageNvidiaWidth,
     height: config.mattermostImageNvidiaHeight,
     cfg_scale: 1,

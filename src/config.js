@@ -1190,6 +1190,7 @@ export const config = {
   mattermostGeneratedThumbnailModel: process.env.MATTERMOST_GENERATED_THUMBNAIL_MODEL || 'gpt-image-2',
   mattermostGeneratedThumbnailSize: process.env.MATTERMOST_GENERATED_THUMBNAIL_SIZE || '1536x1024',
   mattermostGeneratedThumbnailQuality: process.env.MATTERMOST_GENERATED_THUMBNAIL_QUALITY || 'low',
+  mattermostGeneratedThumbnailPromptVersion: process.env.MATTERMOST_GENERATED_THUMBNAIL_PROMPT_VERSION || 'no-text-v2',
   mattermostGeneratedThumbnailTimeoutMs: numberEnv('MATTERMOST_GENERATED_THUMBNAIL_TIMEOUT_MS', 45000),
   mattermostGeneratedThumbnailAttempts: numberEnv('MATTERMOST_GENERATED_THUMBNAIL_ATTEMPTS', 3),
   mattermostGeneratedThumbnailBackoffMs: (process.env.MATTERMOST_GENERATED_THUMBNAIL_BACKOFF_MS || '1000,3000,7000')

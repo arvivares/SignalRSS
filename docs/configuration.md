@@ -106,6 +106,7 @@ For publication safety, keep Mattermost clearance enabled. It is cheaper to dela
 | `MATTERMOST_CHANNELS_BY_CATEGORY` | Category-to-channel mapping. |
 | `MATTERMOST_USERNAME` | Webhook display name, if the integration allows override. |
 | `MATTERMOST_GENERATE_MISSING_THUMBNAILS` | Generates an image when source thumbnails are missing or too small. |
+| `MATTERMOST_GENERATED_THUMBNAIL_PROMPT_VERSION` | Cache/prompt version for generated thumbnails. Bump it when prompt policy changes so old cached images are not reused. |
 | `MATTERMOST_IMAGE_UPLOAD_ENABLED` | Uploads generated images to an external temporary host. |
 
 Use category-specific channels instead of one global channel when the audience differs by topic.
