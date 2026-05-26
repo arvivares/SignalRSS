@@ -480,7 +480,13 @@ async function createChatBriefings({ provider, model, settings, category, cluste
     stream: false,
   };
 
-  if (provider === 'nvidia') {
+  if (provider === 'local' || provider === 'local-intel') {
+    const baseUrl = provider === 'local-intel' ? config.localIntelLlmBaseUrl : config.localLlmBaseUrl;
+    url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+    timeoutMs = provider === 'local-intel'
+      ? config.localIntelLlmRequestTimeoutMs
+      : config.localLlmRequestTimeoutMs;
+  } else if (provider === 'nvidia') {
     if (!config.nvidiaApiKey) throw new Error('NVIDIA_API_KEY is required for NVIDIA briefing fallback');
     url = `${config.nvidiaBaseUrl.replace(/\/$/, '')}/v1/chat/completions`;
     headers.authorization = `Bearer ${config.nvidiaApiKey}`;
@@ -561,24 +567,40 @@ async function createChatBriefings({ provider, model, settings, category, cluste
     throw new Error(`Unsupported briefing provider: ${provider}`);
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    signal: AbortSignal.timeout(timeoutMs),
-    headers,
-    body: JSON.stringify(body),
-  });
-  const raw = await response.text();
-  if (!response.ok) throw new Error(`${provider} ${response.status}: ${raw.slice(0, 700)}`);
+  const maxAttempts = (provider === 'local' || provider === 'local-intel')
+    ? Math.max(1, Number(config.llmLocalRetryAttempts) || 1)
+    : 1;
+  let lastError = null;
 
-  const parsedBody = JSON.parse(raw);
-  const content = parsedBody.choices?.[0]?.message?.content || '';
-  const parsed = parseJsonObject(content);
-  if (!Array.isArray(parsed.results)) throw new Error(`${provider} response missing results array`);
-  return {
-    parsed,
-    resolvedModel: parsedBody.model || model,
-    usage: usageFromChatCompletion(parsedBody),
-  };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers,
+        body: JSON.stringify(body),
+      });
+      const raw = await response.text();
+      if (!response.ok) throw new Error(`${provider} ${response.status}: ${raw.slice(0, 700)}`);
+
+      const parsedBody = JSON.parse(raw);
+      const content = parsedBody.choices?.[0]?.message?.content || '';
+      const parsed = parseJsonObject(content);
+      if (!Array.isArray(parsed.results)) throw new Error(`${provider} response missing results array`);
+      return {
+        parsed,
+        resolvedModel: parsedBody.model || model,
+        usage: usageFromChatCompletion(parsedBody),
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, config.llmLocalRetryDelayMs));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function loadCandidateClusters(settings) {

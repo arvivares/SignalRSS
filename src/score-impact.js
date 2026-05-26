@@ -403,6 +403,10 @@ function usageFromGemini(body = {}) {
   return { ...usageFromChatCompletion(body), costUsd: 0 };
 }
 
+function usageFromLocal(body = {}) {
+  return { ...usageFromChatCompletion(body), costUsd: 0 };
+}
+
 function impactJsonSchema() {
   return {
     type: 'object',
@@ -534,6 +538,60 @@ async function createOpenRouterImpactScore({ model, category, inputs, clusters }
     rawModelResponse: content,
     clusters,
   };
+}
+
+function localLlmBaseUrl(provider) {
+  return provider === 'local-intel' ? config.localIntelLlmBaseUrl : config.localLlmBaseUrl;
+}
+
+function localLlmRequestTimeoutMs(provider) {
+  return provider === 'local-intel' ? config.localIntelLlmRequestTimeoutMs : config.localLlmRequestTimeoutMs;
+}
+
+async function createLocalImpactScore({ provider = 'local', model, category, inputs, clusters }) {
+  const maxAttempts = Math.max(1, Number(config.llmLocalRetryAttempts) || 1);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`${localLlmBaseUrl(provider).replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(localLlmRequestTimeoutMs(provider)),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: impactMessages(category, inputs),
+          temperature: 0.1,
+          max_tokens: config.impactMaxOutputTokens,
+          response_format: { type: 'json_object' },
+          stream: false,
+        }),
+      });
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(`${provider} ${response.status}: ${raw.slice(0, 700)}`);
+      }
+
+      const body = JSON.parse(raw);
+      const content = body.choices?.[0]?.message?.content || '';
+      const parsed = parseJsonObject(content);
+      if (!Array.isArray(parsed.results)) throw new Error(`${provider} response missing results array`);
+      return {
+        parsed,
+        resolvedModel: body.model || model,
+        usage: usageFromLocal(body),
+        rawModelResponse: content,
+        clusters,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, config.llmLocalRetryDelayMs));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function createNvidiaImpactScore({ model, category, inputs, clusters }) {
@@ -1168,17 +1226,46 @@ async function markImpactJobsDone(clusterIds) {
   );
 }
 
+function isRetryableCooldownFailure(error) {
+  const message = cleanText(error);
+  if (!message.startsWith('All impact scoring fallbacks failed:')) return false;
+
+  const fallbackErrors = message
+    .replace('All impact scoring fallbacks failed:', '')
+    .split(' | ')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (fallbackErrors.length === 0) return false;
+
+  const retryableCooldownReasons = [
+    'cooldown rpm_spacing',
+    'cooldown daily_budget_guard',
+    'cooldown daily_rate_limit',
+  ];
+
+  return fallbackErrors.some((item) => item.includes('cooldown rpm_spacing'))
+    && fallbackErrors.every((item) => retryableCooldownReasons.some((reason) => item.includes(reason)));
+}
+
 async function markImpactJobsFailed(clusterIds, error) {
   if (clusterIds.length === 0) return;
+  const cleanedError = cleanText(error).slice(0, 1000);
+  const retryableCooldown = isRetryableCooldownFailure(error);
   await pool.query(
     `UPDATE cluster_impact_jobs
-     SET status = CASE WHEN attempts >= $2 THEN 'failed' ELSE 'pending' END,
+     SET status = CASE
+           WHEN $4::boolean THEN 'pending'
+           WHEN attempts >= $2 THEN 'failed'
+           ELSE 'pending'
+         END,
+         attempts = CASE WHEN $4::boolean THEN 0 ELSE attempts END,
          locked_by = NULL,
          locked_at = NULL,
          last_error = $3,
          updated_at = NOW()
      WHERE cluster_id = ANY($1::uuid[])`,
-    [clusterIds, config.impactJobMaxAttempts, cleanText(error).slice(0, 1000)],
+    [clusterIds, config.impactJobMaxAttempts, cleanedError, retryableCooldown],
   );
 }
 
@@ -1299,7 +1386,9 @@ async function scoreClusters(openai, clusters) {
     });
     try {
       let result;
-      if (spec.provider === 'nvidia') {
+      if (spec.provider === 'local' || spec.provider === 'local-intel') {
+        result = await createLocalImpactScore({ provider: spec.provider, model: spec.model, category, inputs, clusters });
+      } else if (spec.provider === 'nvidia') {
         result = await createNvidiaImpactScore({ model: spec.model, category, inputs, clusters });
       } else if (spec.provider === 'groq') {
         result = await createGroqImpactScore({ model: spec.model, category, inputs, clusters });

@@ -1,9 +1,15 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
 import { closeDb, waitForDb } from './db.js';
+import { quarantineLowQualityFeeds } from './feed-quarantine.js';
 import { cutoffDate, fetchAndStoreFeed, loadFeeds } from './ingest.js';
 
 async function pollOnce() {
+  const quarantine = await quarantineLowQualityFeeds();
+  if (quarantine.disabled > 0) {
+    console.log(`Auto-quarantined ${quarantine.disabled} low-quality feeds`);
+  }
+
   const feeds = await loadFeeds({ limit: config.workerBatchSize });
   const since = cutoffDate(config.ingestWindowDays);
   const until = new Date();

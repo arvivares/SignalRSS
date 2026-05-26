@@ -1,0 +1,26 @@
+# Temporary local LLM override for isolated model/VRAM tests.
+#
+# Usage:
+#   docker.exe compose -f docker-compose.yml -f compose.nominal.yml -f compose.local-llm.yml --profile local-llm up -d local-llm
+#
+# The service binds only to localhost so it is not exposed on the LAN.
+services:
+  local-llm:
+    image: ollama/ollama:latest
+    profiles:
+      - local-llm
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${LOCAL_LLM_KEEP_ALIVE:-10m}
+      OLLAMA_NUM_PARALLEL: ${LOCAL_LLM_NUM_PARALLEL:-8}
+      OLLAMA_MAX_LOADED_MODELS: ${LOCAL_LLM_MAX_LOADED_MODELS:-1}
+      OLLAMA_MAX_QUEUE: ${LOCAL_LLM_MAX_QUEUE:-1024}
+    volumes:
+      - local_ollama_data:/root/.ollama
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  local_ollama_data:

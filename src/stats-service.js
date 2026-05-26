@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { pool } from './db.js';
-import { filterBriefingRows } from './briefing-exclusions.js';
+import { splitBriefingRows } from './briefing-exclusions.js';
 import { configuredLlmModelPolicies } from './llm-provider-policy.js';
 import { impactEligibilitySql } from './impact-eligibility.js';
 
@@ -390,7 +390,11 @@ export async function buildDashboardMetrics() {
     `).catch(() => ({ rows: [] })),
   ]);
 
-  const briefingPendingRows = filterBriefingRows(briefingRows);
+  const { included: briefingPendingRows, excluded: excludedBriefingRows } = splitBriefingRows(briefingRows);
+  const excludedBriefingPending = excludedBriefingRows.reduce(
+    (total, row) => total + Number(row.briefing_pending || 0),
+    0,
+  );
   const briefingPendingByCategory = new Map();
   for (const row of briefingPendingRows) {
     briefingPendingByCategory.set(
@@ -398,9 +402,17 @@ export async function buildDashboardMetrics() {
       (briefingPendingByCategory.get(row.category) || 0) + Number(row.briefing_pending || 0),
     );
   }
+  const excludedBriefingPendingByCategory = new Map();
+  for (const row of excludedBriefingRows) {
+    excludedBriefingPendingByCategory.set(
+      row.category,
+      (excludedBriefingPendingByCategory.get(row.category) || 0) + Number(row.briefing_pending || 0),
+    );
+  }
   const adjustedBacklogRows = backlogRows.map((row) => ({
     ...row,
     briefing_pending: briefingPendingByCategory.get(row.category) || 0,
+    excluded_briefing_pending: excludedBriefingPendingByCategory.get(row.category) || 0,
   }));
 
   const backlogTotals = adjustedBacklogRows.reduce((total, row) => ({
@@ -431,6 +443,10 @@ export async function buildDashboardMetrics() {
     hourly: hourlyRows,
     backlog: adjustedBacklogRows,
     briefingPending: briefingPendingRows,
+    excludedBriefingPending: {
+      total: excludedBriefingPending,
+      byCategory: excludedBriefingRows,
+    },
     mattermost: mattermostRows.map((row) => ({
       ...row,
       channel: config.mattermostChannelsByCategory[row.category] || config.mattermostChannel || '',
@@ -840,7 +856,7 @@ export async function buildOpsHealth() {
     `),
   ]);
 
-  const briefingPendingRows = filterBriefingRows(briefingRows);
+  const { included: briefingPendingRows, excluded: excludedBriefingRows } = splitBriefingRows(briefingRows);
   const impactTotals = impactRows.reduce((totals, row) => {
     totals[row.status] = (totals[row.status] || 0) + Number(row.jobs || 0);
     totals.running_fresh = (totals.running_fresh || 0) + Number(row.running_fresh || 0);
@@ -850,6 +866,7 @@ export async function buildOpsHealth() {
     return totals;
   }, {});
   const briefingPending = briefingPendingRows.reduce((total, row) => total + Number(row.pending || 0), 0);
+  const excludedBriefingPending = excludedBriefingRows.reduce((total, row) => total + Number(row.pending || 0), 0);
   const staleBriefingClaims = staleBriefingClaimRows.reduce((total, row) => total + Number(row.stale_claims || 0), 0);
   const mattermostFailed = mattermostRows
     .filter((row) => row.status === 'failed')
@@ -881,6 +898,8 @@ export async function buildOpsHealth() {
       briefing: {
         pending: briefingPending,
         byCategory: briefingPendingRows,
+        excludedPending: excludedBriefingPending,
+        excludedByCategory: excludedBriefingRows,
         claims: staleBriefingClaimRows,
       },
     },

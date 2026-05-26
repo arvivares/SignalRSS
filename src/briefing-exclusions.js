@@ -34,3 +34,13 @@ export function isBriefingExcluded(categorySlug, level) {
 export function filterBriefingRows(rows = [], { categoryKey = 'category', levelKey = 'impact_level' } = {}) {
   return rows.filter((row) => !isBriefingExcluded(row[categoryKey], row[levelKey]));
 }
+
+export function splitBriefingRows(rows = [], { categoryKey = 'category', levelKey = 'impact_level' } = {}) {
+  return rows.reduce((result, row) => {
+    const target = isBriefingExcluded(row[categoryKey], row[levelKey])
+      ? result.excluded
+      : result.included;
+    target.push(row);
+    return result;
+  }, { included: [], excluded: [] });
+}

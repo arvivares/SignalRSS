@@ -26,6 +26,7 @@ function renderOpsSummary({ ops, metrics }) {
   const impactPending = Number(ops.queues?.impact?.totals?.pending || 0);
   const impactRunning = Number(ops.queues?.impact?.totals?.running || 0);
   const briefingPending = Number(ops.queues?.briefing?.pending || 0);
+  const excludedBriefingPending = Number(ops.queues?.briefing?.excludedPending || 0);
   const activeCooldowns = Number(ops.providers?.activeCooldowns?.length || 0);
   const inactiveCooldowns = Number(ops.providers?.inactiveHistoricalCooldowns?.length || 0);
   const mattermostFailed = (ops.mattermost || [])
@@ -60,7 +61,7 @@ function renderOpsSummary({ ops, metrics }) {
         <div><strong>${formatNumber(briefingPending)}</strong><span>briefs pendientes</span></div>
         <div><strong>${formatNumber(activeCooldowns)}</strong><span>cooldowns activos</span></div>
       </div>
-      <p>${formatNumber(metrics.feeds.successful_feeds_24h)} de ${formatNumber(metrics.feeds.enabled_feeds)} feeds respondieron en 24h. ${mattermostFailed ? `${formatNumber(mattermostFailed)} publicaciones Mattermost fallidas recientes.` : 'Mattermost sin fallos recientes críticos.'}${inactiveCooldowns ? ` ${formatNumber(inactiveCooldowns)} cooldowns históricos quedan fuera del circuito activo.` : ''}</p>
+      <p>${formatNumber(metrics.feeds.successful_feeds_24h)} de ${formatNumber(metrics.feeds.enabled_feeds)} feeds respondieron en 24h. ${mattermostFailed ? `${formatNumber(mattermostFailed)} publicaciones Mattermost fallidas recientes.` : 'Mattermost sin fallos recientes críticos.'}${excludedBriefingPending ? ` ${formatNumber(excludedBriefingPending)} briefs omitidos por regla no cuentan como backlog.` : ''}${inactiveCooldowns ? ` ${formatNumber(inactiveCooldowns)} cooldowns históricos quedan fuera del circuito activo.` : ''}</p>
     </div>
   </section>`;
 }
@@ -285,6 +286,7 @@ function renderBacklogStatus(rows) {
       const impactFailed = Number(row.impact_failed || 0);
       const staleRunning = Number(row.impact_running_stale || row.running_stale || 0);
       const briefingPending = Number(row.briefing_pending || 0);
+      const excludedBriefingPending = Number(row.excluded_briefing_pending || 0);
       const done = impactPending === 0 && impactFailed === 0 && briefingPending === 0;
       const state = staleRunning > 0 ? 'trabada' : impactFailed > 0 ? 'fallida' : done ? 'terminada' : 'pendiente';
       const detail = [
@@ -293,6 +295,7 @@ function renderBacklogStatus(rows) {
         staleRunning ? `${formatNumber(staleRunning)} stale` : '',
         impactFailed ? `${formatNumber(impactFailed)} fallidos` : '',
         `${formatNumber(briefingPending)} briefs`,
+        excludedBriefingPending ? `${formatNumber(excludedBriefingPending)} omitidos por regla` : '',
       ].filter(Boolean).join(' · ');
       const pendingWindow = row.oldest_pending_latest_published_at
         ? ` · Publicadas: ${formatUtc(row.oldest_pending_latest_published_at)} a ${formatUtc(row.newest_pending_latest_published_at)}`
@@ -335,6 +338,23 @@ function renderPendingBriefings(rows) {
         <td>${escapeHtml(row.category)}</td>
         <td><span class="impact-badge ${escapeHtml(String(row.impact_level).toLowerCase())}">${escapeHtml(row.impact_level)}</span></td>
         <td>${formatNumber(row.briefing_pending)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+function renderExcludedBriefings(excluded = {}) {
+  const rows = excluded.byCategory || [];
+  const total = Number(excluded.total || 0);
+  if (!total) return '';
+  return `<p class="muted">${formatNumber(total)} briefings están omitidos por configuración y no se consideran pendientes.</p>
+  <table class="table">
+    <thead><tr><th>Categoría</th><th>Prioridad</th><th>Omitidos</th></tr></thead>
+    <tbody>
+      ${rows.map((row) => `<tr>
+        <td>${escapeHtml(row.category)}</td>
+        <td><span class="impact-badge ${escapeHtml(String(row.impact_level).toLowerCase())}">${escapeHtml(row.impact_level)}</span></td>
+        <td>${formatNumber(row.briefing_pending || row.pending)}</td>
       </tr>`).join('')}
     </tbody>
   </table>`;
@@ -523,7 +543,7 @@ export async function renderDashboardPage({ renderLayout }) {
       ${metricCard('Noticias ingresadas 24h', formatNumber(articleMetrics.articles_ingested_24h), `${formatDecimal(feedMetrics.avg_articles_ingested_per_hour)} por hora promedio`, 'fresh')}
       ${metricCard('Noticias publicadas 24h', formatNumber(articleMetrics.articles_published_24h), 'Según published_at de cada fuente')}
       ${metricCard('Feeds con novedades 24h', formatNumber(feedMetrics.feeds_with_new_articles_24h), `${formatNumber(feedMetrics.enabled_feeds)} feeds habilitados`)}
-      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impact pendientes/corriendo${backlog.impactFailed ? ` · ${formatNumber(backlog.impactFailed)} fallidos` : ''}`, backlog.briefingPending || backlog.impactPending || backlog.impactFailed ? 'warn' : 'fresh')}
+      ${metricCard('Briefings pendientes', formatNumber(backlog.briefingPending), `${formatNumber(backlog.impactPending)} impact pendientes/corriendo${backlog.impactFailed ? ` · ${formatNumber(backlog.impactFailed)} fallidos` : ''}${metrics.excludedBriefingPending?.total ? ` · ${formatNumber(metrics.excludedBriefingPending.total)} briefs omitidos` : ''}`, backlog.briefingPending || backlog.impactPending || backlog.impactFailed ? 'warn' : 'fresh')}
       ${metricCard('Artículos 7 días', formatNumber(articleMetrics.articles_ingested_7d), `${formatNumber(articleMetrics.articles_published_7d)} publicados en ventana`)}
       ${metricCard('Clusters 7 días', formatNumber(clusters.clusters_last_7_days), `${formatNumber(clusters.clustered_article_links)} links clusterizados`)}
       ${metricCard('Categorías completas', `${formatNumber(backlog.completedCategories)}/${formatNumber(metrics.backlog.length)}`, 'Sin impacto ni briefings pendientes')}
@@ -563,6 +583,7 @@ export async function renderDashboardPage({ renderLayout }) {
       <section class="card">
         <h2>Briefings pendientes</h2>
         ${renderPendingBriefings(metrics.briefingPending)}
+        ${renderExcludedBriefings(metrics.excludedBriefingPending)}
       </section>
     </div>
     <div class="dashboard-grid">

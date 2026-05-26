@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-process.env.CATEGORY_BRIEFING_EXCLUDE_LEVELS = 'consumer-electronics:P3';
+process.env.CATEGORY_BRIEFING_EXCLUDE_LEVELS = 'consumer-electronics:P2,consumer-electronics:P3';
 process.env.LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE = '1';
 process.env.LLM_GITHUB_IMPACT_MAX_BATCH_SIZE = '2';
 process.env.LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE = '1';
@@ -11,7 +11,7 @@ process.env.MATTERMOST_CATEGORY_SLUGS = 'artificial-intelligence,artificial-inte
 process.env.MATTERMOST_CHANNELS_BY_CATEGORY = 'artificial-intelligence:news-ai,cloud-infrastructure:news-cloud';
 process.env.MATTERMOST_WEBHOOK_URL = 'https://mattermost.example/hooks/test';
 
-const { isBriefingExcluded, filterBriefingRows } = await import('../src/briefing-exclusions.js');
+const { isBriefingExcluded, filterBriefingRows, splitBriefingRows } = await import('../src/briefing-exclusions.js');
 const { parseJsonObject } = await import('../src/llm-utils.js');
 const { llmProviderEnabled, maxBatchSizeForLlmProvider } = await import('../src/llm-provider-policy.js');
 const { mattermostDestinations } = await import('../src/mattermost-destinations.js');
@@ -21,7 +21,8 @@ const { batchSizeForBriefingProviders } = await import('../src/briefing-batch-po
 
 test('briefing exclusions remove configured category/priority pairs', () => {
   assert.equal(isBriefingExcluded('consumer-electronics', 'P3'), true);
-  assert.equal(isBriefingExcluded('consumer-electronics', 'P2'), false);
+  assert.equal(isBriefingExcluded('consumer-electronics', 'P2'), true);
+  assert.equal(isBriefingExcluded('consumer-electronics', 'P1'), false);
   assert.deepEqual(
     filterBriefingRows([
       { category: 'consumer-electronics', impact_level: 'P3', pending: 10 },
@@ -29,9 +30,18 @@ test('briefing exclusions remove configured category/priority pairs', () => {
       { category: 'artificial-intelligence', impact_level: 'P3', pending: 1 },
     ]),
     [
-      { category: 'consumer-electronics', impact_level: 'P2', pending: 2 },
       { category: 'artificial-intelligence', impact_level: 'P3', pending: 1 },
     ],
+  );
+  assert.deepEqual(
+    splitBriefingRows([
+      { category: 'consumer-electronics', impact_level: 'P2', pending: 2 },
+      { category: 'artificial-intelligence', impact_level: 'P3', pending: 1 },
+    ]),
+    {
+      included: [{ category: 'artificial-intelligence', impact_level: 'P3', pending: 1 }],
+      excluded: [{ category: 'consumer-electronics', impact_level: 'P2', pending: 2 }],
+    },
   );
 });
 

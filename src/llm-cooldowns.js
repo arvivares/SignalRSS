@@ -36,7 +36,14 @@ function knownLimit(provider, model) {
   return llmKnownLimit({ provider, model });
 }
 
+function isLocalProvider(provider) {
+  return provider === 'local' || provider === 'local-intel';
+}
+
 function spacingMs(provider, model) {
+  // Local Ollama has its own in-process queue. Applying global rpm spacing here
+  // causes parallel workers to skip local and fall through to paid providers.
+  if (isLocalProvider(provider)) return 0;
   const limit = knownLimit(provider, model);
   if (!limit?.rpm) return 0;
   return Math.ceil(60000 / limit.rpm);
@@ -125,6 +132,7 @@ function classifyFailure(provider, model, error, previousFailures = 0) {
   const text = message.toLowerCase();
   const retryMs = parseRetryDurationMs(message);
   const limit = knownLimit(provider, model);
+  const localProvider = isLocalProvider(provider);
 
   if (
     text.includes('tokens_limit_reached')
@@ -166,20 +174,23 @@ function classifyFailure(provider, model, error, previousFailures = 0) {
   if (text.includes('timeout') || text.includes('aborted') || text.includes('econnreset') || text.includes('fetch failed')) {
     return {
       reason: 'transport_error',
-      cooldownMs: config.llmTransportErrorCooldownMs * Math.min(previousFailures + 1, 4),
+      cooldownMs: (localProvider ? config.llmLocalTransportErrorCooldownMs : config.llmTransportErrorCooldownMs)
+        * Math.min(previousFailures + 1, 4),
     };
   }
 
   if (text.includes('invalid json') || text.includes('missing results') || text.includes('did not contain json')) {
     return {
       reason: 'bad_model_response',
-      cooldownMs: config.llmBadResponseCooldownMs * Math.min(previousFailures + 1, 3),
+      cooldownMs: (localProvider ? config.llmLocalBadResponseCooldownMs : config.llmBadResponseCooldownMs)
+        * Math.min(previousFailures + 1, 3),
     };
   }
 
   return {
     reason: 'model_error',
-    cooldownMs: config.llmModelErrorCooldownMs * Math.min(previousFailures + 1, 3),
+    cooldownMs: (localProvider ? config.llmLocalModelErrorCooldownMs : config.llmModelErrorCooldownMs)
+      * Math.min(previousFailures + 1, 3),
   };
 }
 

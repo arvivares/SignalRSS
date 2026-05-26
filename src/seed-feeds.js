@@ -78,7 +78,6 @@ async function main() {
            timezone_gmt = EXCLUDED.timezone_gmt,
            validation_status = EXCLUDED.validation_status,
            frequency_status = EXCLUDED.frequency_status,
-           enabled = TRUE,
            updated_at = NOW()`,
         [
           feed.name,

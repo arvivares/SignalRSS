@@ -2,6 +2,20 @@ import { config } from './config.js';
 
 const DEFAULT_POLICIES = [
   {
+    provider: 'local',
+    model: 'qwen3:4b-instruct',
+    rpm: () => config.llmLocalRpm,
+    impactMaxBatchSize: () => config.llmLocalImpactMaxBatchSize,
+    briefingMaxBatchSize: () => config.llmLocalBriefingMaxBatchSize,
+  },
+  {
+    provider: 'local-intel',
+    model: 'qwen3:4b-instruct',
+    rpm: () => config.llmLocalIntelRpm,
+    impactMaxBatchSize: () => config.llmLocalIntelImpactMaxBatchSize,
+    briefingMaxBatchSize: () => config.llmLocalIntelBriefingMaxBatchSize,
+  },
+  {
     provider: 'mistral',
     model: 'mistral-small-latest',
     rpm: () => config.llmMistralRpm,
@@ -294,6 +308,12 @@ export function maxBatchSizeForLlmProvider({ provider, model, operation }) {
     return operation === 'briefing_generation'
       ? config.llmRackBriefingMaxBatchSize
       : config.llmRackImpactMaxBatchSize;
+  }
+
+  if (provider === 'local') {
+    return operation === 'briefing_generation'
+      ? config.llmLocalBriefingMaxBatchSize
+      : config.llmLocalImpactMaxBatchSize;
   }
 
   return null;
