@@ -10,7 +10,10 @@ process.env.CATEGORY_BRIEFING_FREE_BATCH_SIZE = '5';
 process.env.MATTERMOST_CATEGORY_SLUGS = 'artificial-intelligence,artificial-intelligence,cloud-infrastructure';
 process.env.MATTERMOST_CHANNELS_BY_CATEGORY = 'artificial-intelligence:news-ai,cloud-infrastructure:news-cloud';
 process.env.MATTERMOST_WEBHOOK_URL = 'https://mattermost.example/hooks/test';
+process.env.MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED = 'true';
+process.env.MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY = '0.83';
 
+const { config } = await import('../src/config.js');
 const { isBriefingExcluded, filterBriefingRows, splitBriefingRows } = await import('../src/briefing-exclusions.js');
 const { parseJsonObject } = await import('../src/llm-utils.js');
 const { llmProviderEnabled, maxBatchSizeForLlmProvider } = await import('../src/llm-provider-policy.js');
@@ -123,6 +126,11 @@ test('Mattermost destinations are de-duplicated before posting', () => {
       { categorySlug: 'cloud-infrastructure', channel: 'news-cloud' },
     ],
   );
+});
+
+test('Mattermost semantic duplicate gate is configurable', () => {
+  assert.equal(config.mattermostSemanticDuplicateGateEnabled, true);
+  assert.equal(config.mattermostSemanticDuplicateMinSimilarity, 0.83);
 });
 
 test('superseded Mattermost records do not count as active failures', () => {

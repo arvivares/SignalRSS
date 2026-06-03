@@ -3,8 +3,9 @@ import { pool } from './db.js';
 import { briefingStoryHash } from './story-hash.js';
 import { cleanText } from './text-utils.js';
 
-const FINAL_STATUSES = ['posted', 'skipped_existing'];
+const FINAL_STATUSES = ['posted', 'skipped_existing', 'skipped_duplicate'];
 const BLOCKING_STATUSES = FINAL_STATUSES;
+const SEMANTIC_DUPLICATE_STATUSES = [...FINAL_STATUSES, 'processing'];
 
 function blockingStatusSql(alias = 'mn') {
   return `(
@@ -286,7 +287,7 @@ export async function loadPendingBriefings({ destination, levels }) {
     levels,
     config.mattermostWindowHours,
     config.mattermostBatchSize,
-    BLOCKING_STATUSES,
+    SEMANTIC_DUPLICATE_STATUSES,
     destination.categorySlug,
     config.mattermostStabilityDelayMinutes,
     destination.hash,
@@ -296,6 +297,66 @@ export async function loadPendingBriefings({ destination, levels }) {
   ]);
 
   return rows;
+}
+
+function canRunSemanticDuplicateGate(briefing) {
+  return (
+    config.mattermostSemanticDuplicateGateEnabled
+    && briefing?.cluster_id
+    && briefing?.locale
+    && briefing?.centroid_embedding_vector
+    && briefing?.embedding_model
+  );
+}
+
+export async function findSemanticDuplicateNotification(briefing, {
+  client = pool,
+  destinationHash = '',
+} = {}) {
+  if (!canRunSemanticDuplicateGate(briefing)) return null;
+
+  const { rows } = await client.query(`
+    SELECT
+      mn.cluster_id AS duplicate_cluster_id,
+      mn.status AS duplicate_status,
+      mn.destination_hash AS duplicate_destination_hash,
+      tc.slug AS duplicate_category_slug,
+      1 - (other_sc.centroid_embedding_vector <=> $1::vector) AS similarity
+    FROM mattermost_notifications mn
+    JOIN story_clusters other_sc ON other_sc.id = mn.cluster_id
+    JOIN topic_categories tc ON tc.id = other_sc.category_id
+    WHERE mn.locale = $2
+      AND mn.status = ANY($3::text[])
+      AND mn.cluster_id <> $4
+      AND other_sc.centroid_embedding_vector IS NOT NULL
+      AND other_sc.embedding_model = $5
+      AND other_sc.latest_published_at >= NOW() - ($6::int * INTERVAL '1 hour')
+      AND other_sc.latest_published_at <= NOW()
+      AND 1 - (other_sc.centroid_embedding_vector <=> $1::vector) >= $7::float
+    ORDER BY
+      CASE mn.status
+        WHEN 'posted' THEN 1
+        WHEN 'processing' THEN 2
+        WHEN 'skipped_existing' THEN 3
+        ELSE 4
+      END,
+      (mn.destination_hash = $8) DESC,
+      1 - (other_sc.centroid_embedding_vector <=> $1::vector) DESC,
+      mn.posted_at ASC NULLS LAST,
+      mn.created_at ASC
+    LIMIT 1
+  `, [
+    briefing.centroid_embedding_vector,
+    briefing.locale,
+    SEMANTIC_DUPLICATE_STATUSES,
+    briefing.cluster_id,
+    briefing.embedding_model,
+    config.mattermostWindowHours,
+    config.mattermostSemanticDuplicateMinSimilarity,
+    destinationHash,
+  ]);
+
+  return rows[0] || null;
 }
 
 export async function saveNotification({
@@ -420,6 +481,26 @@ export async function savePostedNotification({ briefing, hash, result }) {
 }
 
 export async function claimNotification({ briefing, hash }) {
+  const semanticDuplicate = await findSemanticDuplicateNotification(briefing, {
+    destinationHash: hash,
+  });
+  if (semanticDuplicate) {
+    const similarity = Number(semanticDuplicate.similarity || 0).toFixed(4);
+    await saveNotification({
+      briefing,
+      hash,
+      status: 'skipped_duplicate',
+      error: [
+        'semantic duplicate pre-publish gate',
+        `duplicate_cluster_id=${semanticDuplicate.duplicate_cluster_id}`,
+        `duplicate_status=${semanticDuplicate.duplicate_status}`,
+        `duplicate_category=${semanticDuplicate.duplicate_category_slug}`,
+        `similarity=${similarity}`,
+      ].join(' | '),
+    });
+    return false;
+  }
+
   try {
     const { rowCount } = await pool.query(`
       INSERT INTO mattermost_notifications (

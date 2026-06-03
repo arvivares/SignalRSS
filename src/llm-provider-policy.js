@@ -140,8 +140,17 @@ const DEFAULT_POLICIES = [
   },
   {
     provider: 'cerebras',
-    model: 'llama3.1-8b',
-    rpm: 30,
+    model: 'gpt-oss-120b',
+    rpm: 1000,
+    tpm: 1000000,
+    briefingEnabled: false,
+  },
+  {
+    provider: 'cerebras',
+    model: 'zai-glm-4.7',
+    rpm: 500,
+    tpm: 500000,
+    briefingEnabled: false,
   },
   {
     provider: 'llmrack',

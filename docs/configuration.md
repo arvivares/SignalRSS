@@ -96,6 +96,8 @@ Nominal fallbacks should stay ordered by observed reliability, not by theoretica
 | `CROSS_CATEGORY_ADJUDICATION_ARTICLE_SCAN_MIN_CENTROID_SIMILARITY` | Lower similarity bound for candidate scanning. |
 | `MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE` | Blocks posting while a plausible cross-category duplicate is unresolved. |
 | `MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY` | Mattermost pre-publish similarity threshold. |
+| `MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED` | Enables final Mattermost semantic duplicate detection against active notifications. |
+| `MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY` | Minimum cluster centroid similarity used to skip a candidate as already posted. |
 
 For publication safety, keep Mattermost clearance enabled. It is cheaper to delay a post than to clean duplicate posts across channels.
 

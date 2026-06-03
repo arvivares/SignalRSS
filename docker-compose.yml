@@ -18,6 +18,8 @@ x-llm-env: &llm-env
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
   CEREBRAS_BASE_URL: ${CEREBRAS_BASE_URL:-https://api.cerebras.ai/v1}
   CEREBRAS_REQUEST_TIMEOUT_MS: ${CEREBRAS_REQUEST_TIMEOUT_MS:-45000}
+  LLM_MODEL_POLICY_CEREBRAS_GPT_OSS_120B: ${LLM_MODEL_POLICY_CEREBRAS_GPT_OSS_120B:-briefing_enabled=false}
+  LLM_MODEL_POLICY_CEREBRAS_ZAI_GLM_4_7: ${LLM_MODEL_POLICY_CEREBRAS_ZAI_GLM_4_7:-briefing_enabled=false}
   SAMBANOVA_API_KEY: ${SAMBANOVA_API_KEY:-}
   SAMBANOVA_BASE_URL: ${SAMBANOVA_BASE_URL:-https://api.sambanova.ai/v1}
   SAMBANOVA_REQUEST_TIMEOUT_MS: ${SAMBANOVA_REQUEST_TIMEOUT_MS:-45000}
@@ -110,7 +112,7 @@ x-category-impact-worker-base: &category-impact-worker-base
     IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
     IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
     IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
+    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:gpt-oss-120b,cerebras:zai-glm-4.7,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
     IMPACT_BATCH_SIZE: ${CATEGORY_IMPACT_BATCH_SIZE:-4}
     IMPACT_BATCHES_PER_TICK: ${CATEGORY_IMPACT_BATCHES_PER_TICK:-5}
     CATEGORY_IMPACT_CATEGORIES_PER_TICK: ${CATEGORY_IMPACT_CATEGORIES_PER_TICK:-3}
@@ -349,6 +351,8 @@ services:
       MATTERMOST_FAILED_RETRY_BACKOFF_MINUTES: ${MATTERMOST_FAILED_RETRY_BACKOFF_MINUTES:-5}
       MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE: ${MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE:-true}
       MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY: ${MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY:-0.68}
+      MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED: ${MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED:-true}
+      MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY: ${MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY:-0.82}
       MATTERMOST_CATEGORY_SLUG: ${MATTERMOST_CATEGORY_SLUG:-artificial-intelligence}
       MATTERMOST_CATEGORY_SLUGS: ${MATTERMOST_CATEGORY_SLUGS:-artificial-intelligence}
       MATTERMOST_NOTIFY_EXISTING: ${MATTERMOST_NOTIFY_EXISTING:-false}
@@ -501,6 +505,8 @@ services:
       MATTERMOST_FAILED_RETRY_BACKOFF_MINUTES: ${MATTERMOST_FAILED_RETRY_BACKOFF_MINUTES:-5}
       MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE: ${MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE:-true}
       MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY: ${MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY:-0.68}
+      MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED: ${MATTERMOST_SEMANTIC_DUPLICATE_GATE_ENABLED:-true}
+      MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY: ${MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY:-0.82}
       MATTERMOST_CATEGORY_SLUG: ${MATTERMOST_CATEGORY_SLUG:-artificial-intelligence}
       MATTERMOST_CATEGORY_SLUGS: ${MATTERMOST_CATEGORY_SLUGS:-artificial-intelligence}
       MATTERMOST_NOTIFY_EXISTING: ${MATTERMOST_NOTIFY_EXISTING:-false}
@@ -654,7 +660,7 @@ services:
     environment:
       <<: [*db-env, *llm-env, *langfuse-env]
       P0_BRIEFING_MODEL: ${P0_BRIEFING_MODEL:-gpt-5-nano}
-      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:llama3.1-8b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:openai/gpt-oss-120b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
+      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:openai/gpt-oss-120b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       BRIEFING_OPENAI_FALLBACK_LEVELS: ${BRIEFING_OPENAI_FALLBACK_LEVELS:-P0,P1,P2,P3}
       BRIEFING_OUTPUT_LANGUAGE: ${BRIEFING_OUTPUT_LANGUAGE:-Spanish}
       BRIEFING_VERSION_SUFFIX: ${BRIEFING_VERSION_SUFFIX:-}

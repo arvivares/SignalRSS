@@ -135,11 +135,14 @@ When cross-category clusters are merged, precedence is based on impact level fir
 Mattermost publishing is intentionally downstream from duplicate validation. A cluster is eligible to post only after these checks pass:
 
 - No previous `mattermost_notifications` row exists for the same `story_hash` and locale in a blocking status.
+- No semantically similar Mattermost notification already exists in a blocking status within the publication window.
 - No cross-category adjudication has already marked the cluster as `same_story` with a posted counterpart.
 - No unresolved `same_story` cross-category adjudication still references the cluster.
 - If `MATTERMOST_REQUIRE_CROSS_CATEGORY_CLEARANCE=true`, no unadjudicated cross-category cluster in the Mattermost window has centroid similarity greater than or equal to `MATTERMOST_CROSS_CATEGORY_CLEARANCE_MIN_SIMILARITY`.
 
-The last rule is the pre-publish safety gate. It prevents Mattermost from publishing a P0 before the cross-category worker has had a chance to decide whether the story is a duplicate in another category. If the gate holds a cluster, the cross-category adjudication worker should process the candidate first; the Mattermost worker can publish after the candidate is adjudicated as distinct/related, or after a same-story merge resolves it into the winning cluster.
+The semantic Mattermost gate is the final pre-publish idempotency check. It compares the candidate cluster centroid against already posted or processing Mattermost notifications across all categories. If similarity is above `MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY`, the candidate is recorded as `skipped_duplicate` instead of being posted. This avoids hardcoded entity rules and protects the channels even when URLs or briefing titles differ.
+
+The cross-category clearance rule prevents Mattermost from publishing a P0 before the cross-category worker has had a chance to decide whether the story is a duplicate in another category. If the gate holds a cluster, the cross-category adjudication worker should process the candidate first; the Mattermost worker can publish after the candidate is adjudicated as distinct/related, or after a same-story merge resolves it into the winning cluster.
 
 ## Mattermost publishing
 
