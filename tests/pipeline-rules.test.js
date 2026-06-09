@@ -6,6 +6,8 @@ process.env.LLM_GITHUB_BRIEFING_MAX_BATCH_SIZE = '1';
 process.env.LLM_GITHUB_IMPACT_MAX_BATCH_SIZE = '2';
 process.env.LLM_OPENROUTER_BRIEFING_MAX_BATCH_SIZE = '1';
 process.env.LLM_OPENROUTER_IMPACT_MAX_BATCH_SIZE = '4';
+process.env.LLM_VLLM_BRIEFING_MAX_BATCH_SIZE = '2';
+process.env.LLM_VLLM_IMPACT_MAX_BATCH_SIZE = '4';
 process.env.CATEGORY_BRIEFING_FREE_BATCH_SIZE = '5';
 process.env.MATTERMOST_CATEGORY_SLUGS = 'artificial-intelligence,artificial-intelligence,cloud-infrastructure';
 process.env.MATTERMOST_CHANNELS_BY_CATEGORY = 'artificial-intelligence:news-ai,cloud-infrastructure:news-cloud';
@@ -15,7 +17,7 @@ process.env.MATTERMOST_SEMANTIC_DUPLICATE_MIN_SIMILARITY = '0.83';
 
 const { config } = await import('../src/config.js');
 const { isBriefingExcluded, filterBriefingRows, splitBriefingRows } = await import('../src/briefing-exclusions.js');
-const { parseJsonObject } = await import('../src/llm-utils.js');
+const { boundedMaxOutputTokens, parseJsonObject } = await import('../src/llm-utils.js');
 const { llmProviderEnabled, maxBatchSizeForLlmProvider } = await import('../src/llm-provider-policy.js');
 const { mattermostDestinations } = await import('../src/mattermost-destinations.js');
 const { mattermostFailureRows } = await import('../src/dashboard-page.js');
@@ -64,6 +66,16 @@ test('LLM policy disables noisy impact providers while keeping safe briefing fal
     model: 'meta/meta-llama-3.1-8b-instruct',
     operation: 'briefing_generation',
   }), 1);
+  assert.equal(maxBatchSizeForLlmProvider({
+    provider: 'vllm',
+    model: 'qwen3:4b-instruct-vllm',
+    operation: 'impact_scoring',
+  }), 4);
+  assert.equal(maxBatchSizeForLlmProvider({
+    provider: 'vllm',
+    model: 'qwen3:4b-instruct-vllm',
+    operation: 'briefing_generation',
+  }), 2);
   assert.equal(llmProviderEnabled({
     provider: 'llmrack',
     model: 'qwen-2.5-7b',
@@ -113,6 +125,32 @@ test('model JSON parsing accepts wrapped JSON but rejects empty invalid response
     items: [1],
   });
   assert.throws(() => parseJsonObject('no structured payload'), /Model response did not contain JSON object/);
+});
+
+test('local model context budgeting reduces output tokens before exceeding context', () => {
+  const longPrompt = 'x'.repeat(Math.ceil(7293 * 3.6));
+  const budget = boundedMaxOutputTokens({
+    messages: [{ role: 'user', content: longPrompt }],
+    requestedMaxTokens: 900,
+    contextWindowTokens: 8192,
+    safetyTokens: 128,
+  });
+
+  assert.equal(budget.wasReduced, true);
+  assert.ok(budget.maxTokens < 900);
+  assert.ok(budget.promptTokens + budget.maxTokens + 128 <= 8192);
+});
+
+test('local model context budgeting keeps requested cap when context has room', () => {
+  const budget = boundedMaxOutputTokens({
+    messages: [{ role: 'user', content: 'short prompt' }],
+    requestedMaxTokens: 900,
+    contextWindowTokens: 8192,
+    safetyTokens: 128,
+  });
+
+  assert.equal(budget.wasReduced, false);
+  assert.equal(budget.maxTokens, 900);
 });
 
 test('Mattermost destinations are de-duplicated before posting', () => {

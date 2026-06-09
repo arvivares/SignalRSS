@@ -16,6 +16,13 @@ const DEFAULT_POLICIES = [
     briefingMaxBatchSize: () => config.llmLocalIntelBriefingMaxBatchSize,
   },
   {
+    provider: 'vllm',
+    model: 'qwen3:4b-instruct-vllm',
+    rpm: () => config.llmVllmRpm,
+    impactMaxBatchSize: () => config.llmVllmImpactMaxBatchSize,
+    briefingMaxBatchSize: () => config.llmVllmBriefingMaxBatchSize,
+  },
+  {
     provider: 'mistral',
     model: 'mistral-small-latest',
     rpm: () => config.llmMistralRpm,
@@ -323,6 +330,18 @@ export function maxBatchSizeForLlmProvider({ provider, model, operation }) {
     return operation === 'briefing_generation'
       ? config.llmLocalBriefingMaxBatchSize
       : config.llmLocalImpactMaxBatchSize;
+  }
+
+  if (provider === 'local-intel') {
+    return operation === 'briefing_generation'
+      ? config.llmLocalIntelBriefingMaxBatchSize
+      : config.llmLocalIntelImpactMaxBatchSize;
+  }
+
+  if (provider === 'vllm') {
+    return operation === 'briefing_generation'
+      ? config.llmVllmBriefingMaxBatchSize
+      : config.llmVllmImpactMaxBatchSize;
   }
 
   return null;

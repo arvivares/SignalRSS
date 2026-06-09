@@ -31,8 +31,14 @@ x-llm-env: &llm-env
   LLMRACK_REQUEST_TIMEOUT_MS: ${LLMRACK_REQUEST_TIMEOUT_MS:-45000}
   LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-llm:11434/v1}
   LOCAL_INTEL_LLM_BASE_URL: ${LOCAL_INTEL_LLM_BASE_URL:-http://host.docker.internal:11435/v1}
+  VLLM_BASE_URL: ${VLLM_BASE_URL:-http://local-vllm:8000/v1}
   LOCAL_LLM_REQUEST_TIMEOUT_MS: ${LOCAL_LLM_REQUEST_TIMEOUT_MS:-180000}
   LOCAL_INTEL_LLM_REQUEST_TIMEOUT_MS: ${LOCAL_INTEL_LLM_REQUEST_TIMEOUT_MS:-180000}
+  VLLM_REQUEST_TIMEOUT_MS: ${VLLM_REQUEST_TIMEOUT_MS:-180000}
+  LOCAL_LLM_MAX_CONTEXT_TOKENS: ${LOCAL_LLM_MAX_CONTEXT_TOKENS:-4096}
+  LOCAL_INTEL_LLM_MAX_CONTEXT_TOKENS: ${LOCAL_INTEL_LLM_MAX_CONTEXT_TOKENS:-8192}
+  VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-8192}
+  LOCAL_LLM_CONTEXT_SAFETY_TOKENS: ${LOCAL_LLM_CONTEXT_SAFETY_TOKENS:-128}
   CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
   CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
   CLOUDFLARE_BASE_URL: ${CLOUDFLARE_BASE_URL:-}
@@ -63,6 +69,9 @@ x-llm-env: &llm-env
   LLM_LOCAL_INTEL_RPM: ${LLM_LOCAL_INTEL_RPM:-60}
   LLM_LOCAL_INTEL_IMPACT_MAX_BATCH_SIZE: ${LLM_LOCAL_INTEL_IMPACT_MAX_BATCH_SIZE:-1}
   LLM_LOCAL_INTEL_BRIEFING_MAX_BATCH_SIZE: ${LLM_LOCAL_INTEL_BRIEFING_MAX_BATCH_SIZE:-1}
+  LLM_VLLM_RPM: ${LLM_VLLM_RPM:-600}
+  LLM_VLLM_IMPACT_MAX_BATCH_SIZE: ${LLM_VLLM_IMPACT_MAX_BATCH_SIZE:-4}
+  LLM_VLLM_BRIEFING_MAX_BATCH_SIZE: ${LLM_VLLM_BRIEFING_MAX_BATCH_SIZE:-2}
   LLM_LOCAL_BAD_RESPONSE_COOLDOWN_MS: ${LLM_LOCAL_BAD_RESPONSE_COOLDOWN_MS:-5000}
   LLM_LOCAL_MODEL_ERROR_COOLDOWN_MS: ${LLM_LOCAL_MODEL_ERROR_COOLDOWN_MS:-5000}
   LLM_LOCAL_TRANSPORT_ERROR_COOLDOWN_MS: ${LLM_LOCAL_TRANSPORT_ERROR_COOLDOWN_MS:-30000}
@@ -112,7 +121,8 @@ x-category-impact-worker-base: &category-impact-worker-base
     IMPACT_RUBRIC_VERSION: ${IMPACT_RUBRIC_VERSION:-impact-v2}
     IMPACT_CATEGORY_GUIDANCE_JSON: ${IMPACT_CATEGORY_GUIDANCE_JSON:-}
     IMPACT_MAX_OUTPUT_TOKENS: ${IMPACT_MAX_OUTPUT_TOKENS:-2200}
-    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:gpt-oss-120b,cerebras:zai-glm-4.7,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
+    IMPACT_LOCAL_MAX_OUTPUT_TOKENS: ${IMPACT_LOCAL_MAX_OUTPUT_TOKENS:-1200}
+    IMPACT_MODEL_FALLBACKS: ${IMPACT_MODEL_FALLBACKS:-vllm:qwen3:4b-instruct-vllm,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,cerebras:gpt-oss-120b,cerebras:zai-glm-4.7,openrouter:nvidia/nemotron-3-super-120b-a12b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
     IMPACT_BATCH_SIZE: ${CATEGORY_IMPACT_BATCH_SIZE:-4}
     IMPACT_BATCHES_PER_TICK: ${CATEGORY_IMPACT_BATCHES_PER_TICK:-5}
     CATEGORY_IMPACT_CATEGORIES_PER_TICK: ${CATEGORY_IMPACT_CATEGORIES_PER_TICK:-3}
@@ -660,9 +670,10 @@ services:
     environment:
       <<: [*db-env, *llm-env, *langfuse-env]
       P0_BRIEFING_MODEL: ${P0_BRIEFING_MODEL:-gpt-5-nano}
-      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-local:qwen3:4b-instruct,local-intel:qwen3:4b-instruct,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:openai/gpt-oss-120b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
+      BRIEFING_MODEL_FALLBACKS: ${BRIEFING_MODEL_FALLBACKS:-vllm:qwen3:4b-instruct-vllm,mistral:mistral-small-latest,nvidia:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:openai/gpt-oss-120b:free,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:llama-3.3-70b-versatile,openai:gpt-5-nano}
       BRIEFING_OPENAI_FALLBACK_LEVELS: ${BRIEFING_OPENAI_FALLBACK_LEVELS:-P0,P1,P2,P3}
       BRIEFING_OUTPUT_LANGUAGE: ${BRIEFING_OUTPUT_LANGUAGE:-Spanish}
+      BRIEFING_LOCAL_MAX_OUTPUT_TOKENS: ${BRIEFING_LOCAL_MAX_OUTPUT_TOKENS:-900}
       BRIEFING_VERSION_SUFFIX: ${BRIEFING_VERSION_SUFFIX:-}
       BRIEFING_CATEGORY_GUIDANCE_JSON: ${BRIEFING_CATEGORY_GUIDANCE_JSON:-}
       BRIEFING_MIN_PUBLISHED_AT: ${BRIEFING_MIN_PUBLISHED_AT:-}

@@ -17,6 +17,47 @@ export function parseJsonObject(text) {
   }
 }
 
+export function estimateTextTokens(text = '') {
+  const value = String(text || '');
+  if (!value) return 0;
+  // Conservative approximation for mixed-language news prompts.
+  return Math.ceil(value.length / 3.6);
+}
+
+export function estimateChatMessagesTokens(messages = []) {
+  return messages.reduce((total, message) => {
+    const content = Array.isArray(message?.content)
+      ? message.content.map((part) => part?.text || '').join('\n')
+      : message?.content || '';
+    return total + 4 + estimateTextTokens(`${message?.role || ''}\n${content}`);
+  }, 3);
+}
+
+export function boundedMaxOutputTokens({
+  messages = [],
+  requestedMaxTokens,
+  contextWindowTokens,
+  safetyTokens = 128,
+  minOutputTokens = 128,
+}) {
+  const requested = Math.max(1, Number(requestedMaxTokens) || 1);
+  const context = Math.max(0, Number(contextWindowTokens) || 0);
+  if (!context) return requested;
+
+  const promptTokens = estimateChatMessagesTokens(messages);
+  const available = context - promptTokens - Math.max(0, Number(safetyTokens) || 0);
+  const bounded = available >= minOutputTokens
+    ? Math.min(requested, available)
+    : Math.min(requested, Math.max(1, available));
+
+  return {
+    maxTokens: Math.max(1, bounded),
+    promptTokens,
+    contextWindowTokens: context,
+    wasReduced: bounded < requested,
+  };
+}
+
 export function usageFromChatCompletion(body = {}) {
   const usage = body.usage || {};
   const input = Number(usage.prompt_tokens || usage.input_tokens || 0);

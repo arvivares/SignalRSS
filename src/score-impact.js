@@ -13,6 +13,7 @@ import {
 import { llmProviderEnabled, maxBatchSizeForLlmProvider } from './llm-provider-policy.js';
 import { logLlmRequest } from './llm-request-log.js';
 import {
+  boundedMaxOutputTokens,
   parseJsonObject,
   responseText,
   usageFromChatCompletion,
@@ -541,16 +542,44 @@ async function createOpenRouterImpactScore({ model, category, inputs, clusters }
 }
 
 function localLlmBaseUrl(provider) {
+  if (provider === 'vllm') return config.vllmBaseUrl;
   return provider === 'local-intel' ? config.localIntelLlmBaseUrl : config.localLlmBaseUrl;
 }
 
 function localLlmRequestTimeoutMs(provider) {
+  if (provider === 'vllm') return config.vllmRequestTimeoutMs;
   return provider === 'local-intel' ? config.localIntelLlmRequestTimeoutMs : config.localLlmRequestTimeoutMs;
+}
+
+function impactMaxOutputTokensForProvider(provider) {
+  return provider === 'local' || provider === 'local-intel' || provider === 'vllm'
+    ? config.impactLocalMaxOutputTokens
+    : config.impactMaxOutputTokens;
+}
+
+function localContextWindowTokens(provider) {
+  if (provider === 'vllm') return config.vllmMaxContextTokens;
+  if (provider === 'local-intel') return config.localIntelLlmMaxContextTokens;
+  return config.localLlmMaxContextTokens;
 }
 
 async function createLocalImpactScore({ provider = 'local', model, category, inputs, clusters }) {
   const maxAttempts = Math.max(1, Number(config.llmLocalRetryAttempts) || 1);
   let lastError = null;
+  const messages = impactMessages(category, inputs);
+  const budget = boundedMaxOutputTokens({
+    messages,
+    requestedMaxTokens: impactMaxOutputTokensForProvider(provider),
+    contextWindowTokens: localContextWindowTokens(provider),
+    safetyTokens: config.localLlmContextSafetyTokens,
+    minOutputTokens: 256,
+  });
+  if (budget.wasReduced) {
+    console.warn(
+      `${provider} impact max_tokens reduced from ${impactMaxOutputTokensForProvider(provider)} `
+      + `to ${budget.maxTokens} for prompt estimate ${budget.promptTokens}/${budget.contextWindowTokens}`,
+    );
+  }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -560,9 +589,9 @@ async function createLocalImpactScore({ provider = 'local', model, category, inp
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           model,
-          messages: impactMessages(category, inputs),
+          messages,
           temperature: 0.1,
-          max_tokens: config.impactMaxOutputTokens,
+          max_tokens: budget.maxTokens,
           response_format: { type: 'json_object' },
           stream: false,
         }),
@@ -1386,7 +1415,7 @@ async function scoreClusters(openai, clusters) {
     });
     try {
       let result;
-      if (spec.provider === 'local' || spec.provider === 'local-intel') {
+      if (spec.provider === 'local' || spec.provider === 'local-intel' || spec.provider === 'vllm') {
         result = await createLocalImpactScore({ provider: spec.provider, model: spec.model, category, inputs, clusters });
       } else if (spec.provider === 'nvidia') {
         result = await createNvidiaImpactScore({ model: spec.model, category, inputs, clusters });

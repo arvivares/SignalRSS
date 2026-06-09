@@ -1,0 +1,38 @@
+# Experimental vLLM backend for high-throughput local inference tests.
+#
+# Usage:
+#   docker.exe compose -f docker-compose.yml -f compose.nominal.yml -f compose.vllm.yml --profile local-vllm up -d local-vllm
+#
+# The service is OpenAI-compatible and bound to localhost only.
+services:
+  local-vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.20.2}
+    profiles:
+      - local-vllm
+    ports:
+      - "127.0.0.1:${VLLM_HOST_PORT:-8000}:8000"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    command:
+      - ${VLLM_MODEL:-warshanks/Qwen3-4B-Instruct-2507-AWQ}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --served-model-name
+      - ${VLLM_SERVED_MODEL_NAME:-qwen3:4b-instruct-vllm}
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-8192}
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.82}
+      - --max-num-seqs
+      - ${VLLM_MAX_NUM_SEQS:-64}
+    volumes:
+      - vllm_hf_cache:/root/.cache/huggingface
+    ipc: host
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  vllm_hf_cache:

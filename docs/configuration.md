@@ -45,6 +45,17 @@ Category-specific thresholds should live in `.env.example` and `.env`, not in on
 | --- | --- |
 | `IMPACT_MODEL_FALLBACKS` | Ordered provider/model chain for impact scoring. |
 | `BRIEFING_MODEL_FALLBACKS` | Ordered provider/model chain for brief generation. |
+| `VLLM_BASE_URL` | OpenAI-compatible vLLM endpoint, usually `http://local-vllm:8000/v1` inside Docker. |
+| `VLLM_MODEL` | Hugging Face model served by `compose.vllm.yml`. |
+| `VLLM_SERVED_MODEL_NAME` | Model name SignalRSS should use in fallback entries, such as `qwen3:4b-instruct-vllm`. |
+| `LLM_VLLM_IMPACT_MAX_BATCH_SIZE` | Maximum impact clusters per vLLM request. |
+| `LLM_VLLM_BRIEFING_MAX_BATCH_SIZE` | Maximum briefing clusters per vLLM request. |
+| `VLLM_MAX_MODEL_LEN` | Context window served by vLLM. SignalRSS uses it to reduce `max_tokens` before requests exceed context. |
+| `LOCAL_LLM_MAX_CONTEXT_TOKENS` | Context window for the Ollama/local provider. |
+| `LOCAL_INTEL_LLM_MAX_CONTEXT_TOKENS` | Context window for the local Intel/Ollama provider. |
+| `LOCAL_LLM_CONTEXT_SAFETY_TOKENS` | Safety reserve subtracted from local/vLLM context before choosing output tokens. |
+| `IMPACT_LOCAL_MAX_OUTPUT_TOKENS` | Preferred output-token cap for local, local-intel, and vLLM impact scoring. It is dynamically reduced when the prompt is near the context limit. |
+| `BRIEFING_LOCAL_MAX_OUTPUT_TOKENS` | Preferred output-token cap for local, local-intel, and vLLM briefing generation. It is dynamically reduced when the prompt is near the context limit. |
 | `IMPACT_WINDOW_HOURS` | Impact processing window. |
 | `IMPACT_WINDOW_HOURS_BY_CATEGORY` | Category-specific impact windows, such as `consumer-electronics:24`. |
 | `IMPACT_MAX_CLUSTER_AGE_HOURS` | Global cap for how long a cluster can remain impact-eligible. `0` disables it. |

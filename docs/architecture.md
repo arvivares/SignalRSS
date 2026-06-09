@@ -93,6 +93,8 @@ When adding new features, prefer extending one boundary instead of adding cross-
 
 Impact scoring and briefing generation use provider fallback chains. Free or lower-cost providers are attempted first, and OpenAI is kept as the paid final fallback.
 
+Local inference can be served by Ollama or vLLM. Ollama is simpler and remains the default local backend; vLLM is available through `compose.vllm.yml` for OpenAI-compatible continuous batching tests. Treat vLLM as an explicit rollout: start it under the `local-vllm` profile, probe JSON reliability, then prepend `vllm:qwen3:4b-instruct-vllm` to the fallback chains.
+
 The default fallback chains are configured through:
 
 ```bash

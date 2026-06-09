@@ -162,6 +162,17 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 
 Provider fallback order, cooldowns, request limits, and per-provider batch sizes are controlled through the `LLM_*`, `IMPACT_MODEL_FALLBACKS`, and `BRIEFING_MODEL_FALLBACKS` variables in `.env`.
 
+### vLLM backend
+
+vLLM is available as a higher-throughput OpenAI-compatible local backend with continuous batching:
+
+```bash
+docker.exe compose -f docker-compose.yml -f compose.nominal.yml -f compose.vllm.yml --profile local-vllm up -d local-vllm
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8000/v1 LOCAL_LLM_MODEL=qwen3:4b-instruct-vllm node scripts/probe-local-llm.js qwen3:4b-instruct-vllm
+```
+
+The default fallback chains put `vllm:qwen3:4b-instruct-vllm` before Ollama and paid OpenAI. Use `VLLM_MAX_MODEL_LEN`, `IMPACT_LOCAL_MAX_OUTPUT_TOKENS`, and `BRIEFING_LOCAL_MAX_OUTPUT_TOKENS` to tune local requests. SignalRSS dynamically reduces local/vLLM `max_tokens` when a prompt approaches the configured context window.
+
 ## Mattermost publishing
 
 Mattermost publishing is controlled by:

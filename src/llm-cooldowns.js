@@ -37,7 +37,7 @@ function knownLimit(provider, model) {
 }
 
 function isLocalProvider(provider) {
-  return provider === 'local' || provider === 'local-intel';
+  return provider === 'local' || provider === 'local-intel' || provider === 'vllm';
 }
 
 function spacingMs(provider, model) {

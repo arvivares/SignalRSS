@@ -19,7 +19,13 @@ import {
   unsupportedStrongClaims,
 } from './evidence-quality.js';
 import { logLlmRequest } from './llm-request-log.js';
-import { parseJsonObject, responseText, usageFromChatCompletion, usageFromOpenAIResponse } from './llm-utils.js';
+import {
+  boundedMaxOutputTokens,
+  parseJsonObject,
+  responseText,
+  usageFromChatCompletion,
+  usageFromOpenAIResponse,
+} from './llm-utils.js';
 import { priorityBriefingSettings } from './priority-config.js';
 import { storyHashFromParts } from './story-hash.js';
 import { cleanTextNoNull as cleanText, hashInput, sanitizeJsonValue } from './text-utils.js';
@@ -463,6 +469,18 @@ function githubSupportsJsonSchema(model) {
   return String(model || '').startsWith('openai/');
 }
 
+function briefingMaxOutputTokensForProvider(provider) {
+  return provider === 'local' || provider === 'local-intel' || provider === 'vllm'
+    ? config.briefingLocalMaxOutputTokens
+    : 1800;
+}
+
+function localContextWindowTokens(provider) {
+  if (provider === 'vllm') return config.vllmMaxContextTokens;
+  if (provider === 'local-intel') return config.localIntelLlmMaxContextTokens;
+  return config.localLlmMaxContextTokens;
+}
+
 async function createChatBriefings({ provider, model, settings, category, clusters }) {
   if (provider === 'gemini') {
     return createGeminiBriefings({ model, settings, category, clusters });
@@ -471,21 +489,42 @@ async function createChatBriefings({ provider, model, settings, category, cluste
   let url;
   let headers = { 'content-type': 'application/json' };
   let timeoutMs = 45000;
+  const messages = briefingMessages(settings, category, clusters);
   const body = {
     model,
-    messages: briefingMessages(settings, category, clusters),
+    messages,
     temperature: 0.1,
-    max_tokens: 1800,
+    max_tokens: briefingMaxOutputTokensForProvider(provider),
     response_format: { type: 'json_object' },
     stream: false,
   };
 
-  if (provider === 'local' || provider === 'local-intel') {
-    const baseUrl = provider === 'local-intel' ? config.localIntelLlmBaseUrl : config.localLlmBaseUrl;
+  if (provider === 'local' || provider === 'local-intel' || provider === 'vllm') {
+    const baseUrl = provider === 'vllm'
+      ? config.vllmBaseUrl
+      : provider === 'local-intel'
+        ? config.localIntelLlmBaseUrl
+        : config.localLlmBaseUrl;
     url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-    timeoutMs = provider === 'local-intel'
-      ? config.localIntelLlmRequestTimeoutMs
-      : config.localLlmRequestTimeoutMs;
+    timeoutMs = provider === 'vllm'
+      ? config.vllmRequestTimeoutMs
+      : provider === 'local-intel'
+        ? config.localIntelLlmRequestTimeoutMs
+        : config.localLlmRequestTimeoutMs;
+    const budget = boundedMaxOutputTokens({
+      messages,
+      requestedMaxTokens: body.max_tokens,
+      contextWindowTokens: localContextWindowTokens(provider),
+      safetyTokens: config.localLlmContextSafetyTokens,
+      minOutputTokens: 128,
+    });
+    body.max_tokens = budget.maxTokens;
+    if (budget.wasReduced) {
+      console.warn(
+        `${provider} briefing max_tokens reduced from ${briefingMaxOutputTokensForProvider(provider)} `
+        + `to ${budget.maxTokens} for prompt estimate ${budget.promptTokens}/${budget.contextWindowTokens}`,
+      );
+    }
   } else if (provider === 'nvidia') {
     if (!config.nvidiaApiKey) throw new Error('NVIDIA_API_KEY is required for NVIDIA briefing fallback');
     url = `${config.nvidiaBaseUrl.replace(/\/$/, '')}/v1/chat/completions`;
@@ -567,7 +606,7 @@ async function createChatBriefings({ provider, model, settings, category, cluste
     throw new Error(`Unsupported briefing provider: ${provider}`);
   }
 
-  const maxAttempts = (provider === 'local' || provider === 'local-intel')
+  const maxAttempts = (provider === 'local' || provider === 'local-intel' || provider === 'vllm')
     ? Math.max(1, Number(config.llmLocalRetryAttempts) || 1)
     : 1;
   let lastError = null;
